@@ -37,7 +37,7 @@ export class ProjectController {
    */
   static createProject = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
-    const { workspaceId } = req.params;
+    const { workspaceId } = req.body;
 
     if (!userId) {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -110,32 +110,29 @@ export class ProjectController {
    * Paginated list of projects
    */
   static listProjects = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const userId = req.auth?.userId;
-    const { workspaceId } = req.params;
+  const userId = req.auth?.userId;
 
-    if (!userId) {
-      throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
-    }
+  if (!userId) {
+    throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
+  }
 
-    // Verify membership
-    const isMember = await WorkspaceService.canAccessWorkspace(workspaceId, userId);
-    if (!isMember) {
-      throw new ForbiddenError('You are not a member of this workspace');
-    }
+  const status = req.query.status as ProjectStatus | undefined;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
 
-    const status = req.query.status as ProjectStatus | undefined;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+  const result = await ProjectService.getUserProjects(
+    userId,
+    status,
+    page,
+    limit
+  );
 
-    const result = await ProjectService.getWorkspaceProjects(workspaceId, userId, status, page, limit);
-
-    res.status(200).json({
-      success: true,
-      data: result,
-      timestamp: new Date(),
-    });
+  res.status(200).json({
+    success: true,
+    data: result,
+    timestamp: new Date(),
   });
-
+});
   /**
    * PATCH /workspaces/:workspaceId/projects/:id
    * Update project details

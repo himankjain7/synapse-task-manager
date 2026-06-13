@@ -25,7 +25,7 @@ import {
  * - DELETE /workspaces/:workspaceId/projects/:id - Delete project
  * - GET /workspaces/:workspaceId/projects/:id/stats - Get project statistics
  */
-const router = Router({ mergeParams: true });
+const router = Router();
 
 /**
  * Apply authentication middleware to all routes
@@ -54,9 +54,8 @@ router.use(requireAuth);
  */
 router.post(
   '/',
-  validateUUID('workspaceId'),
   validateBody,
-  validateRequired(['name']),
+  validateRequired(['name', 'workspaceId']),
   sanitizeFields(['name', 'description']),
   ProjectController.createProject
 );
@@ -79,7 +78,6 @@ router.post(
  */
 router.get(
   '/',
-  validateUUID('workspaceId'),
   validatePagination,
   ProjectController.listProjects
 );
@@ -97,7 +95,6 @@ router.get(
  */
 router.get(
   '/:id',
-  validateUUID('workspaceId'),
   validateUUID('id'),
   ProjectController.getProject
 );
@@ -125,7 +122,6 @@ router.get(
  */
 router.patch(
   '/:id',
-  validateUUID('workspaceId'),
   validateUUID('id'),
   validateBody,
   sanitizeFields(['name', 'description']),
@@ -148,7 +144,6 @@ router.patch(
  */
 router.post(
   '/:id/archive',
-  validateUUID('workspaceId'),
   validateUUID('id'),
   ProjectController.archiveProject
 );
@@ -168,7 +163,6 @@ router.post(
  */
 router.post(
   '/:id/unarchive',
-  validateUUID('workspaceId'),
   validateUUID('id'),
   ProjectController.unarchiveProject
 );
@@ -188,7 +182,6 @@ router.post(
  */
 router.delete(
   '/:id',
-  validateUUID('workspaceId'),
   validateUUID('id'),
   ProjectController.deleteProject
 );
@@ -212,7 +205,6 @@ router.delete(
  */
 router.get(
   '/:id/stats',
-  validateUUID('workspaceId'),
   validateUUID('id'),
   ProjectController.getProjectStats
 );

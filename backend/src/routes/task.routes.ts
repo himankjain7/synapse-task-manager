@@ -60,9 +60,8 @@ router.use(requireAuth);
  */
 router.post(
   '/',
-  validateUUID('projectId'),
   validateBody,
-  validateRequired(['title']),
+  validateRequired(['title', 'projectId']),
   sanitizeFields(['title', 'description']),
   TaskController.createTask
 );
@@ -87,7 +86,6 @@ router.post(
  */
 router.get(
   '/',
-  validateUUID('projectId'),
   validatePagination,
   TaskController.listTasks
 );
@@ -105,7 +103,6 @@ router.get(
  */
 router.get(
   '/:id',
-  validateUUID('projectId'),
   validateUUID('id'),
   TaskController.getTask
 );
@@ -133,7 +130,6 @@ router.get(
  */
 router.patch(
   '/:id',
-  validateUUID('projectId'),
   validateUUID('id'),
   validateBody,
   sanitizeFields(['title', 'description']),
@@ -161,7 +157,6 @@ router.patch(
  */
 router.patch(
   '/:id/status',
-  validateUUID('projectId'),
   validateUUID('id'),
   validateBody,
   validateRequired(['status']),
@@ -187,7 +182,6 @@ router.patch(
  */
 router.patch(
   '/:id/assign',
-  validateUUID('projectId'),
   validateUUID('id'),
   validateBody,
   validateRequired(['assignedTo']),
@@ -208,7 +202,6 @@ router.patch(
  */
 router.delete(
   '/:id',
-  validateUUID('projectId'),
   validateUUID('id'),
   TaskController.deleteTask
 );
@@ -233,7 +226,6 @@ router.delete(
  */
 router.patch(
   '/:id/reorder',
-  validateUUID('projectId'),
   validateUUID('id'),
   validateBody,
   validateRequired(['newPosition']),
@@ -264,7 +256,6 @@ router.patch(
  */
 router.post(
   '/bulk-update',
-  validateUUID('projectId'),
   validateBody,
   validateRequired(['updates']),
   TaskController.bulkUpdateTasks

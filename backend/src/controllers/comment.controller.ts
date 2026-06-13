@@ -35,7 +35,7 @@ export class CommentController {
    */
   static createComment = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
-    const { taskId } = req.params;
+    const { taskId } = req.body;
 
     if (!userId) {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -97,30 +97,27 @@ export class CommentController {
    * Paginated list of comments (chronological order)
    */
   static listComments = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const userId = req.auth?.userId;
-    const { taskId } = req.params;
+  const userId = req.auth?.userId;
 
-    if (!userId) {
-      throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
-    }
+  if (!userId) {
+    throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
+  }
 
-    // Verify task exists
-    const task = await TaskService.getTaskById(taskId);
-    if (!task) {
-      throw new NotFoundError('Task', taskId);
-    }
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
 
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+  const result = await CommentService.getUserComments(
+    userId,
+    page,
+    limit
+  );
 
-    const result = await CommentService.getTaskComments(taskId, userId, page, limit);
-
-    res.status(200).json({
-      success: true,
-      data: result,
-      timestamp: new Date(),
-    });
+  res.status(200).json({
+    success: true,
+    data: result,
+    timestamp: new Date(),
   });
+});
 
   /**
    * PATCH /tasks/:taskId/comments/:id
@@ -237,22 +234,36 @@ export class CommentController {
    * List of recent comments with task and project context
    */
   static getActivityFeed = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const userId = req.auth?.userId;
-    const { workspaceId } = req.params;
+  const userId = req.auth?.userId;
 
-    if (!userId) {
-      throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
-    }
+  if (!userId) {
+    throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
+  }
 
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
-    const comments = await CommentService.getRecentComments(workspaceId, userId, limit);
+  const workspaceId = req.query.workspaceId as string;
 
-    res.status(200).json({
-      success: true,
-      data: comments,
-      timestamp: new Date(),
-    });
+  if (!workspaceId) {
+    throw new APIError(
+      400,
+      'VALIDATION_ERROR',
+      'workspaceId query parameter is required'
+    );
+  }
+
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+
+  const comments = await CommentService.getRecentComments(
+    workspaceId,
+    userId,
+    limit
+  );
+
+  res.status(200).json({
+    success: true,
+    data: comments,
+    timestamp: new Date(),
   });
+});
 
   /**
    * GET /tasks/:taskId/comments/count
@@ -266,7 +277,15 @@ export class CommentController {
    * }
    */
   static getCommentCount = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { taskId } = req.params;
+    const taskId = req.query.taskId as string;
+
+if (!taskId) {
+  throw new APIError(
+    400,
+    'VALIDATION_ERROR',
+    'taskId query parameter is required'
+  );
+}
 
     const count = await CommentService.getCommentCount(taskId);
 

@@ -37,7 +37,7 @@ export class TaskController {
    */
   static createTask = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
-    const { projectId } = req.params;
+    const { projectId } = req.body;
 
     if (!userId) {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -101,36 +101,35 @@ export class TaskController {
    * Response: 200 OK
    * Paginated list of tasks
    */
-  static listTasks = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const userId = req.auth?.userId;
-    const { projectId } = req.params;
+   static listTasks = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const userId = req.auth?.userId;
 
-    if (!userId) {
-      throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
-    }
+  if (!userId) {
+    throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
+  }
 
-    // Verify project access
-    const canAccess = await ProjectService.canAccessProject(projectId, userId);
-    if (!canAccess) {
-      throw new ForbiddenError('You do not have access to this project');
-    }
+  const filters: TaskFilterParams = {
+    status: req.query.status as TaskStatus | undefined,
+    priority: req.query.priority as TaskPriority | undefined,
+    assignedTo: req.query.assignedTo as string | undefined,
+    page: parseInt(req.query.page as string) || 1,
+    limit: parseInt(req.query.limit as string) || 20,
+  };
 
-    const filters: TaskFilterParams = {
-      status: req.query.status as TaskStatus | undefined,
-      priority: req.query.priority as TaskPriority | undefined,
-      assignedTo: req.query.assignedTo as string | undefined,
-      page: parseInt(req.query.page as string) || 1,
-      limit: parseInt(req.query.limit as string) || 20,
-    };
+  const result = await TaskService.getUserTasks(
+    userId,
+    filters.status,
+    filters.page,
+    filters.limit
 
-    const result = await TaskService.getProjectTasks(projectId, userId, filters);
+  );
 
-    res.status(200).json({
-      success: true,
-      data: result,
-      timestamp: new Date(),
-    });
+  res.status(200).json({
+    success: true,
+    data: result,
+    timestamp: new Date(),
   });
+});
 
   /**
    * PATCH /projects/:projectId/tasks/:id

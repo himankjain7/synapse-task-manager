@@ -200,15 +200,18 @@ export const createValidationErrorResponse = (
  * @param paramName - Name of UUID param in route
  * @returns Middleware function
  */
-export const validateUUID = (paramName: string = 'id') => {
+export const validateUUID = (
+  fieldName: string = 'id',
+  source: 'params' | 'body' | 'query' = 'params'
+) => {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const id = req.params[paramName];
+    const id = req[source]?.[fieldName];
 
     if (!id || !isValidUUID(id)) {
       res.status(400).json(
         createValidationErrorResponse([
           {
-            field: paramName,
+            field: fieldName,
             message: 'Invalid UUID format',
             value: id,
           },

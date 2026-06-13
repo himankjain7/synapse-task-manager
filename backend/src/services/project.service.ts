@@ -210,6 +210,84 @@ export class ProjectService {
       totalPages: Math.ceil(total / limit),
     };
   }
+  
+  static async getUserProjects(
+  userId: string,
+  status?: ProjectStatus,
+  page: number = 1,
+  limit: number = 50
+): Promise<PaginatedResponse<ProjectWithOwner>> {
+
+  const memberships = await prisma.workspaceMember.findMany({
+    where: {
+      userId,
+    },
+    select: {
+      workspaceId: true,
+    },
+  });
+
+  const workspaceIds = memberships.map(
+    (membership) => membership.workspaceId
+  );
+
+  const where = {
+    workspaceId: {
+      in: workspaceIds,
+    },
+    ...(status && { status }),
+  };
+
+  const projects = await prisma.project.findMany({
+    where,
+    skip: (page - 1) * limit,
+    take: limit,
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  const total = await prisma.project.count({
+    where,
+  });
+
+  const enrichedProjects = await Promise.all(
+    projects.map(async (project) => {
+      const owner = project.ownerId
+        ? await prisma.user.findUnique({
+            where: {
+              id: project.ownerId,
+            },
+          })
+        : null;
+
+      return {
+        ...project,
+        status: project.status as ProjectStatus,
+        owner: owner
+          ? {
+              id: owner.id,
+              email: owner.email,
+              name: owner.name,
+              avatarUrl: owner.avatarUrl,
+              createdAt: owner.createdAt,
+              updatedAt: owner.updatedAt,
+            }
+          : null,
+      };
+    })
+  );
+
+  return {
+    data: enrichedProjects,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
+}
+
+
 
   /**
    * Update project details

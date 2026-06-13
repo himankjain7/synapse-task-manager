@@ -52,9 +52,8 @@ router.use(requireAuth);
  */
 router.post(
   '/',
-  validateUUID('taskId'),
   validateBody,
-  validateRequired(['content']),
+  validateRequired(['taskId', 'content']),
   sanitizeFields(['content']),
   CommentController.createComment
 );
@@ -76,7 +75,6 @@ router.post(
  */
 router.get(
   '/',
-  validateUUID('taskId'),
   validatePagination,
   CommentController.listComments
 );
@@ -94,7 +92,6 @@ router.get(
  */
 router.get(
   '/:id',
-  validateUUID('taskId'),
   validateUUID('id'),
   CommentController.getComment
 );
@@ -122,7 +119,6 @@ router.get(
  */
 router.patch(
   '/:id',
-  validateUUID('taskId'),
   validateUUID('id'),
   validateBody,
   validateRequired(['content']),
@@ -144,7 +140,6 @@ router.patch(
  */
 router.delete(
   '/:id',
-  validateUUID('taskId'),
   validateUUID('id'),
   CommentController.deleteComment
 );
@@ -165,7 +160,6 @@ router.delete(
  */
 router.get(
   '/count',
-  validateUUID('taskId'),
   CommentController.getCommentCount
 );
 
@@ -199,7 +193,6 @@ router.get('/my', validatePagination, CommentController.getUserComments);
  */
 router.get(
   '/activity',
-  validateUUID('workspaceId'),
   CommentController.getActivityFeed
 );
 

@@ -84,8 +84,8 @@ export class TaskService {
         projectId,
         title: data.title.trim(),
         description: data.description?.trim() || null,
-        status: TaskStatus.TODO,
-        priority: data.priority || TaskPriority.MEDIUM,
+        status: TaskStatus.todo,
+        priority: data.priority || TaskPriority.medium,
         assignedTo: data.assignedTo || null,
         dueDate: data.dueDate || null,
         position,
@@ -515,7 +515,7 @@ export class TaskService {
     const tasks = await prisma.task.findMany({
       where: {
         dueDate: { lt: now },
-        status: { not: TaskStatus.DONE as any },
+        status: { not: TaskStatus.done as any },
       },
       orderBy: { dueDate: 'asc' },
       take: limit,
