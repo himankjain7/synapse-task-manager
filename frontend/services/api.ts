@@ -11,31 +11,38 @@ export const api = axios.create({
   },
 });
 
-// Request Interceptor: Attach Auth JWT Header
+let isLoggingOut = false;
+
+// Request Interceptor: Attach JWT Access Token
 api.interceptors.request.use(
   (config) => {
-    const token = useAuthStore.getState().token;
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const accessToken = useAuthStore.getState().accessToken;
+
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
     }
+
     return config;
   },
-  (error) => {
-    return Promise.reject(transformError(error));
-  }
+  (error) => Promise.reject(transformError(error))
 );
 
-// Response Interceptor: Transform errors & handle 401 token invalidation
+// Response Interceptor: Transform errors & handle 401
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const transformed = transformError(error);
-    
-    if (transformed.status === 401) {
-      // Invalidate auth state in store
-      useAuthStore.getState().logout();
+
+    if (transformed.status === 401 && !isLoggingOut) {
+      isLoggingOut = true;
+
+      try {
+        await useAuthStore.getState().logout();
+      } finally {
+        isLoggingOut = false;
+      }
     }
-    
+
     return Promise.reject(transformed);
   }
 );

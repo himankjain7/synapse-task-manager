@@ -1,55 +1,120 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { authApi } from '../services/auth';
 
 export interface User {
   id: string;
   email: string;
   name: string;
   avatarUrl?: string;
-  role?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface AuthState {
   user: User | null;
-  token: string | null;
+  accessToken: string | null;
   isAuthenticated: boolean;
+  isHydrated: boolean;
   isLoading: boolean;
-  setSession: (token: string | null, user: User | null) => void;
-  updateUser: (user: Partial<User>) => void;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name: string) => Promise<void>;
+  logout: () => Promise<void>;
+  restoreSession: () => Promise<void>;
+  setUser: (user: User) => void;
+  setToken: (accessToken: string) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      token: null,
+      accessToken: null,
       isAuthenticated: false,
+      isHydrated: false,
       isLoading: false,
-      setSession: (token, user) =>
-        set({
-          token,
-          user,
-          isAuthenticated: !!token,
-          isLoading: false,
-        }),
-      updateUser: (userData) =>
-        set((state) => ({
-          user: state.user ? { ...state.user, ...userData } : null,
-        })),
-      logout: () =>
-        set({
-          token: null,
-          user: null,
-          isAuthenticated: false,
-          isLoading: false,
-        }),
+
+      login: async (email: string, password: string) => {
+        set({ isLoading: true });
+        try {
+          const result = await authApi.login(email, password);
+          set({
+            accessToken: result.token,
+            user: result.user,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+        } catch (error) {
+          set({ isLoading: false });
+          throw error;
+        }
+      },
+
+      register: async (email: string, password: string, name: string) => {
+        set({ isLoading: true });
+        try {
+          await authApi.register(email, password, name);
+          // Auto-login after successful registration
+          const result = await authApi.login(email, password);
+          set({
+            accessToken: result.token,
+            user: result.user,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+        } catch (error) {
+          set({ isLoading: false });
+          throw error;
+        }
+      },
+
+      logout: async () => {
+        try {
+          await authApi.logout();
+        } catch {
+          // Swallow logout errors
+        } finally {
+          set({
+            accessToken: null,
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+          });
+        }
+      },
+
+      restoreSession: async () => {
+        const state = useAuthStore.getState();
+        if (!state.accessToken) {
+          set({ isHydrated: true });
+          return;
+        }
+        try {
+          await authApi.getMe();
+          set({ isAuthenticated: true, isHydrated: true, isLoading: false });
+        } catch {
+          set({
+            accessToken: null,
+            user: null,
+            isAuthenticated: false,
+            isHydrated: true,
+            isLoading: false,
+          });
+        }
+      },
+
+      setUser: (user: User) => set({ user }),
+
+      setToken: (accessToken: string) => set({ accessToken }),
     }),
     {
       name: 'synapse-auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      // Prevent automatic hydration on import to avoid race conditions with React Native initialization
+      partialize: (state) => ({
+        accessToken: state.accessToken,
+        user: state.user,
+      }),
       skipHydration: true,
     }
   )

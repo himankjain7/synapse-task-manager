@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useEffect, useState, useCallback, Component, ErrorInfo, ReactNode } from 'react';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { View, StyleSheet, Text } from 'react-native';
@@ -63,14 +63,12 @@ class GlobalErrorBoundaryWithTheme extends Component<Props, State> {
   }
 }
 
-
-
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
 
-  const handleHydrated = () => {
+  const handleHydrated = useCallback(() => {
     setAppIsReady(true);
-  };
+  }, []);
 
   useEffect(() => {
     if (appIsReady) {
@@ -98,6 +96,7 @@ function RootLayoutContent() {
           animation: 'slide_from_right',
         }}
       >
+        <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(protected)" options={{ headerShown: false }} />
         <Stack.Screen name="(modals)" options={{ presentation: 'modal' }} />

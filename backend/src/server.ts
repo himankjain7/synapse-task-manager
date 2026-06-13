@@ -50,12 +50,9 @@ const server = http.createServer(app);
 initSocketServer(server);
 
 // Start listening for connections
-server.listen(port, () => {
+// Start listening for connections on all network interfaces
+server.listen(Number(port), '0.0.0.0', () => {
   console.log(`[Synapse Server]: Core API operational at http://localhost:${port}`);
-  console.log(`[Synapse Server]: Real-time Sockets listening at ws://localhost:${port}`);
-});
-
-// Handle unhandled promise rejections outside Express loop
-process.on('unhandledRejection', (reason: Error) => {
-  console.error('[Unhandled Promise Rejection Exception]:', reason);
+  console.log(`[Synapse Server]: Accessible on your local network at http://192.168.1.2:${port}`);
+  console.log(`[Synapse Server]: Real-time Sockets listening at ws://192.168.1.2:${port}`);
 });

@@ -41,3 +41,22 @@ export function validateData<T>(schema: z.ZodSchema<T>, data: unknown): QueryVal
   
   return { success: false, errors };
 }
+
+// Auth validation schemas (mirrors backend Zod schemas)
+export const loginFormSchema = z.object({
+  email: z.string().email('Enter a valid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+export const registerFormSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email('Enter a valid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string().min(1, 'Please confirm your password'),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+});
+
+export type LoginFormData = z.infer<typeof loginFormSchema>;
+export type RegisterFormData = z.infer<typeof registerFormSchema>;

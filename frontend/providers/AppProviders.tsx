@@ -1,14 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useColorScheme } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { ThemeProvider as NavigationThemeProvider, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { queryClient } from '../lib/queryClient';
-import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
+import { useThemeStore } from '../store/themeStore';
 import { useSettingsStore } from '../store/settingsStore';
-import { lightTheme, darkTheme } from '../theme';
 
 interface AppProvidersProps {
   children: React.ReactNode;
@@ -17,20 +14,21 @@ interface AppProvidersProps {
 
 export function AppProviders({ children, onHydrated }: AppProvidersProps) {
   const [isHydrated, setIsHydrated] = useState(false);
-  const themeMode = useThemeStore((state) => state.themeMode);
-  const systemColorScheme = useColorScheme();
 
-  // Rehydrate state from storage before loading
+  // Rehydrate state from storage and restore auth session before loading
   useEffect(() => {
-    async function rehydrateStores() {
+    async function initializeApp() {
       try {
         await Promise.all([
           useAuthStore.persist.rehydrate(),
           useThemeStore.persist.rehydrate(),
           useSettingsStore.persist.rehydrate(),
         ]);
+
+        // Restore auth session (verify stored token with backend)
+        await useAuthStore.getState().restoreSession();
       } catch (error) {
-        console.warn('Error rehydrating Zustand stores:', error);
+        console.warn('Error during app initialization:', error);
       } finally {
         setIsHydrated(true);
         if (onHydrated) {
@@ -38,7 +36,7 @@ export function AppProviders({ children, onHydrated }: AppProvidersProps) {
         }
       }
     }
-    rehydrateStores();
+    initializeApp();
   }, [onHydrated]);
 
   // If stores are not hydrated, we show nothing (splash screen remains visible)
@@ -46,31 +44,11 @@ export function AppProviders({ children, onHydrated }: AppProvidersProps) {
     return null;
   }
 
-  const isDark = themeMode === 'dark' || (themeMode === 'system' && systemColorScheme === 'dark');
-  const activeTheme = isDark ? darkTheme : lightTheme;
-
-  const baseTheme = isDark ? DarkTheme : DefaultTheme;
-  const navigationTheme = {
-    ...baseTheme,
-    dark: isDark,
-    colors: {
-      ...baseTheme.colors,
-      primary: activeTheme.colors.primary,
-      background: activeTheme.colors.background,
-      card: activeTheme.colors.surface,
-      text: activeTheme.colors.text.primary,
-      border: activeTheme.colors.border,
-      notification: activeTheme.colors.danger,
-    },
-  };
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <NavigationThemeProvider value={navigationTheme}>
-            {children}
-          </NavigationThemeProvider>
+          {children}
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
