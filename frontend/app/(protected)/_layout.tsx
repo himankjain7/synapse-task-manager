@@ -29,6 +29,11 @@ export default function ProtectedLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="workspaces/index" options={{ headerShown: false }} />
+      <Stack.Screen name="workspaces/create" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="workspaces/[id]/index" options={{ headerShown: false }} />
+      <Stack.Screen name="workspaces/[id]/members" options={{ headerShown: false }} />
+      <Stack.Screen name="workspaces/[id]/invite" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
     </Stack>
   );
 }

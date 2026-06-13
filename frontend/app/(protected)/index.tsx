@@ -15,11 +15,9 @@ export default function DashboardScreen() {
   };
 
   const handleOpenSettings = () => {
-    // Navigate to modals route group
     router.push('/(modals)/settings');
   };
 
-  // Get initials for the avatar bubble
   const initials = user?.name
     ? user.name
         .split(' ')
@@ -31,7 +29,6 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header Section */}
         <View style={styles.header}>
           <View>
             <Text style={[styles.greeting, { color: theme.colors.text.secondary }]}>Welcome back,</Text>
@@ -42,29 +39,37 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Dashboard Quick Stats Card */}
+        <TouchableOpacity
+          style={[styles.navCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+          onPress={() => router.push('/(protected)/workspaces')}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.navCardTitle, { color: theme.colors.text.primary }]}>Workspaces</Text>
+          <Text style={[styles.navCardDesc, { color: theme.colors.text.secondary }]}>
+            Manage your workspaces, members, and settings
+          </Text>
+          <View style={[styles.navCardArrow, { backgroundColor: theme.colors.primaryLight }]}>
+            <Text style={{ color: theme.colors.primary, fontSize: 18, fontWeight: '600' }}>→</Text>
+          </View>
+        </TouchableOpacity>
+
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <Text style={[styles.cardTitle, { color: theme.colors.text.primary }]}>
-            Workspace Summary
+            Quick Stats
           </Text>
-          <Text style={[styles.cardDesc, { color: theme.colors.text.secondary }]}>
-            Your Synapse node server is fully operational. Tap settings to configure dark mode preferences.
-          </Text>
-          
           <View style={styles.statsContainer}>
             <View style={styles.statBox}>
               <Text style={[styles.statNum, { color: theme.colors.primary }]}>0</Text>
-              <Text style={[styles.statLabel, { color: theme.colors.text.tertiary }]}>Active Tasks</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.text.tertiary }]}>Tasks</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} />
             <View style={styles.statBox}>
               <Text style={[styles.statNum, { color: theme.colors.success }]}>Online</Text>
-              <Text style={[styles.statLabel, { color: theme.colors.text.tertiary }]}>Server Link</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.text.tertiary }]}>Server</Text>
             </View>
           </View>
         </View>
 
-        {/* Action Controls */}
         <View style={styles.actions}>
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: theme.colors.secondaryLight }]}
@@ -72,7 +77,7 @@ export default function DashboardScreen() {
             activeOpacity={0.8}
           >
             <Text style={[styles.actionButtonText, { color: theme.colors.text.primary }]}>
-              Open Settings Modal
+              Settings
             </Text>
           </TouchableOpacity>
 
@@ -82,7 +87,7 @@ export default function DashboardScreen() {
             activeOpacity={0.8}
           >
             <Text style={[styles.actionButtonText, { color: theme.colors.danger }]}>
-              Log Out Session
+              Log Out
             </Text>
           </TouchableOpacity>
         </View>
@@ -102,7 +107,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 28,
     marginTop: 16,
   },
   greeting: {
@@ -128,26 +133,44 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  navCard: {
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+    position: 'relative',
+    ...({ shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 } as any),
+  },
+  navCardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  navCardDesc: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  navCardArrow: {
+    position: 'absolute',
+    right: 16,
+    top: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   card: {
     padding: 20,
     borderRadius: 16,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
     marginBottom: 32,
+    ...({ shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 } as any),
   },
   cardTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 8,
-  },
-  cardDesc: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -176,7 +199,7 @@ const styles = StyleSheet.create({
     height: 32,
   },
   actions: {
-    gap: 16,
+    gap: 12,
   },
   actionButton: {
     height: 52,

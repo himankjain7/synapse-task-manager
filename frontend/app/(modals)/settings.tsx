@@ -1,13 +1,16 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../hooks/useTheme';
 import { useThemeStore, ThemeMode } from '../../store/themeStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useAuthStore } from '../../store/authStore';
+import { getInitials } from '../../utils/formatting';
 
 export default function SettingsModal() {
   const theme = useTheme();
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   const { themeMode, setThemeMode } = useThemeStore();
   const { hapticsEnabled, setHapticsEnabled, notificationsEnabled, setNotificationsEnabled } = useSettingsStore();
 
@@ -15,15 +18,14 @@ export default function SettingsModal() {
     router.back();
   };
 
-  const themeOptions: { key: ThemeMode; label: string }[] = [
-    { key: 'light', label: 'Light Mode' },
-    { key: 'dark', label: 'Dark Mode' },
-    { key: 'system', label: 'System Sync' },
+  const themeOptions: { key: ThemeMode; label: string; icon: string }[] = [
+    { key: 'light', label: 'Light Mode', icon: '☀' },
+    { key: 'dark', label: 'Dark Mode', icon: '🌙' },
+    { key: 'system', label: 'System Sync', icon: '⚙' },
   ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Top Navbar */}
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
         <Text style={[styles.headerTitle, { color: theme.colors.text.primary }]}>Settings</Text>
         <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
@@ -31,12 +33,29 @@ export default function SettingsModal() {
         </TouchableOpacity>
       </View>
 
-      {/* Settings list content */}
-      <View style={styles.content}>
-        {/* Section: Appearance Theme */}
-        <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>
-          APPEARANCE
-        </Text>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* Account Section */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>ACCOUNT</Text>
+        <View style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={styles.profileRow}>
+            <View style={[styles.profileAvatar, { backgroundColor: theme.colors.primary }]}>
+              <Text style={[styles.profileAvatarText, { color: theme.colors.text.onPrimary }]}>
+                {getInitials(user?.name || 'U')}
+              </Text>
+            </View>
+            <View style={styles.profileInfo}>
+              <Text style={[styles.optionLabel, { color: theme.colors.text.primary, fontWeight: '600' }]}>
+                {user?.name || 'User'}
+              </Text>
+              <Text style={{ fontSize: 13, color: theme.colors.text.secondary }}>
+                {user?.email || ''}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Appearance Section */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>APPEARANCE</Text>
         <View style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           {themeOptions.map((opt, idx) => {
             const isSelected = themeMode === opt.key;
@@ -49,9 +68,12 @@ export default function SettingsModal() {
                 ]}
                 onPress={() => setThemeMode(opt.key)}
               >
-                <Text style={[styles.optionLabel, { color: theme.colors.text.primary }]}>
-                  {opt.label}
-                </Text>
+                <View style={styles.optionLeft}>
+                  <Text style={[styles.optionIcon]}>{opt.icon}</Text>
+                  <Text style={[styles.optionLabel, { color: theme.colors.text.primary }]}>
+                    {opt.label}
+                  </Text>
+                </View>
                 {isSelected && (
                   <View style={[styles.checkIndicator, { backgroundColor: theme.colors.primary }]} />
                 )}
@@ -60,10 +82,8 @@ export default function SettingsModal() {
           })}
         </View>
 
-        {/* Section: Preferences */}
-        <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>
-          SYSTEM PREFERENCES
-        </Text>
+        {/* Preferences Section */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>PREFERENCES</Text>
         <View style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <TouchableOpacity
             style={styles.optionRow}
@@ -91,7 +111,18 @@ export default function SettingsModal() {
             />
           </TouchableOpacity>
         </View>
-      </View>
+
+        {/* About Section */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>ABOUT</Text>
+        <View style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={styles.aboutRow}>
+            <Text style={[styles.optionLabel, { color: theme.colors.text.primary }]}>Synapse Workspace</Text>
+            <Text style={{ fontSize: 13, color: theme.colors.text.tertiary }}>Version 1.0.0</Text>
+          </View>
+        </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -121,9 +152,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  content: {
-    flex: 1,
+  scroll: {
     padding: 24,
+    paddingBottom: 40,
   },
   sectionTitle: {
     fontSize: 11,
@@ -137,12 +168,41 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 14,
+  },
+  profileAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileAvatarText: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  profileInfo: {
+    flex: 1,
+    gap: 2,
+  },
   optionRow: {
     height: 50,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
+  },
+  optionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  optionIcon: {
+    fontSize: 16,
   },
   optionLabel: {
     fontSize: 15,
@@ -157,5 +217,11 @@ const styles = StyleSheet.create({
     width: 36,
     height: 20,
     borderRadius: 10,
+  },
+  aboutRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
   },
 });

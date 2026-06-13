@@ -5,6 +5,7 @@ import { View, StyleSheet, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { AppProviders } from '../providers/AppProviders';
 import { useTheme } from '../hooks/useTheme';
+import { ToastContainer } from '../components/Toast';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -101,6 +102,7 @@ function RootLayoutContent() {
         <Stack.Screen name="(protected)" options={{ headerShown: false }} />
         <Stack.Screen name="(modals)" options={{ presentation: 'modal' }} />
       </Stack>
+      <ToastContainer />
     </>
   );
 }

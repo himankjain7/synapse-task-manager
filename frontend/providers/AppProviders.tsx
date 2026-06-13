@@ -6,6 +6,7 @@ import { queryClient } from '../lib/queryClient';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useSettingsStore } from '../store/settingsStore';
+import { useWorkspaceStore } from '../store/workspaceStore';
 
 interface AppProvidersProps {
   children: React.ReactNode;
@@ -23,6 +24,7 @@ export function AppProviders({ children, onHydrated }: AppProvidersProps) {
           useAuthStore.persist.rehydrate(),
           useThemeStore.persist.rehydrate(),
           useSettingsStore.persist.rehydrate(),
+          useWorkspaceStore.persist.rehydrate(),
         ]);
 
         // Restore auth session (verify stored token with backend)
