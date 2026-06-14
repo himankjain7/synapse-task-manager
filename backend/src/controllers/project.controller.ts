@@ -37,7 +37,7 @@ export class ProjectController {
    */
   static createProject = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
-    const { workspaceId } = req.body;
+    const { workspaceId } = req.params;
 
     if (!userId) {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');

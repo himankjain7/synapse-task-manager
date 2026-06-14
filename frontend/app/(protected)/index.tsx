@@ -3,11 +3,14 @@ import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, ScrollView } fr
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../hooks/useTheme';
 import { useAuthStore } from '../../store/authStore';
+import { useNotificationStore } from '../../store/notificationStore';
+import { triggerHaptic } from '../../utils/haptics';
 
 export default function DashboardScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user, logout } = useAuthStore();
+  const badgeCount = useNotificationStore((s) => s.badgeCount);
 
   const handleLogout = async () => {
     await logout();
@@ -34,8 +37,21 @@ export default function DashboardScreen() {
             <Text style={[styles.greeting, { color: theme.colors.text.secondary }]}>Welcome back,</Text>
             <Text style={[styles.userName, { color: theme.colors.text.primary }]}>{user?.name || 'User'}</Text>
           </View>
-          <View style={[styles.avatarBubble, { backgroundColor: theme.colors.primary }]}>
-            <Text style={[styles.avatarText, { color: theme.colors.text.onPrimary }]}>{initials}</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={() => { triggerHaptic('light'); router.push('/(protected)/notifications'); }}
+              style={[styles.iconButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+            >
+              <Text style={{ fontSize: 18 }}>🔔</Text>
+              {badgeCount > 0 && (
+                <View style={[styles.badge, { backgroundColor: theme.colors.danger }]}>
+                  <Text style={styles.badgeText}>{badgeCount > 9 ? '9+' : badgeCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <View style={[styles.avatarBubble, { backgroundColor: theme.colors.primary }]}>
+              <Text style={[styles.avatarText, { color: theme.colors.text.onPrimary }]}>{initials}</Text>
+            </View>
           </View>
         </View>
 
@@ -46,7 +62,7 @@ export default function DashboardScreen() {
         >
           <Text style={[styles.navCardTitle, { color: theme.colors.text.primary }]}>Workspaces</Text>
           <Text style={[styles.navCardDesc, { color: theme.colors.text.secondary }]}>
-            Manage your workspaces, members, and settings
+            Manage your workspaces, members, projects, and tasks
           </Text>
           <View style={[styles.navCardArrow, { backgroundColor: theme.colors.primaryLight }]}>
             <Text style={{ color: theme.colors.primary, fontSize: 18, fontWeight: '600' }}>→</Text>
@@ -55,18 +71,30 @@ export default function DashboardScreen() {
 
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <Text style={[styles.cardTitle, { color: theme.colors.text.primary }]}>
-            Quick Stats
+            Quick Links
           </Text>
-          <View style={styles.statsContainer}>
-            <View style={styles.statBox}>
-              <Text style={[styles.statNum, { color: theme.colors.primary }]}>0</Text>
-              <Text style={[styles.statLabel, { color: theme.colors.text.tertiary }]}>Tasks</Text>
-            </View>
-            <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} />
-            <View style={styles.statBox}>
-              <Text style={[styles.statNum, { color: theme.colors.success }]}>Online</Text>
-              <Text style={[styles.statLabel, { color: theme.colors.text.tertiary }]}>Server</Text>
-            </View>
+          <View style={styles.linksContainer}>
+            <TouchableOpacity
+              style={[styles.linkButton, { backgroundColor: theme.colors.primaryLight }]}
+              onPress={() => { triggerHaptic('light'); router.push('/(protected)/workspaces'); }}
+            >
+              <Text style={[styles.linkEmoji]}>🏢</Text>
+              <Text style={[styles.linkLabel, { color: theme.colors.primary }]}>Workspaces</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.linkButton, { backgroundColor: theme.colors.successLight }]}
+              onPress={() => { triggerHaptic('light'); router.push('/(protected)/notifications'); }}
+            >
+              <Text style={[styles.linkEmoji]}>🔔</Text>
+              <Text style={[styles.linkLabel, { color: theme.colors.success }]}>Notifications</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.linkButton, { backgroundColor: theme.colors.warningLight }]}
+              onPress={handleOpenSettings}
+            >
+              <Text style={[styles.linkEmoji]}>⚙️</Text>
+              <Text style={[styles.linkLabel, { color: theme.colors.warning }]}>Settings</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -97,12 +125,8 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 24,
-  },
+  container: { flex: 1 },
+  scrollContent: { padding: 24 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -110,15 +134,30 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     marginTop: 16,
   },
-  greeting: {
-    fontSize: 14,
-    fontWeight: '500',
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  greeting: { fontSize: 14, fontWeight: '500' },
+  userName: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    position: 'relative',
   },
-  userName: {
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
   },
+  badgeText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
   avatarBubble: {
     width: 48,
     height: 48,
@@ -129,10 +168,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  avatarText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  avatarText: { fontSize: 16, fontWeight: '700' },
   navCard: {
     padding: 20,
     borderRadius: 16,
@@ -141,24 +177,12 @@ const styles = StyleSheet.create({
     position: 'relative',
     ...({ shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 } as any),
   },
-  navCardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  navCardDesc: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
+  navCardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  navCardDesc: { fontSize: 14, lineHeight: 20 },
   navCardArrow: {
-    position: 'absolute',
-    right: 16,
-    top: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: 'absolute', right: 16, top: 16,
+    width: 36, height: 36, borderRadius: 10,
+    justifyContent: 'center', alignItems: 'center',
   },
   card: {
     padding: 20,
@@ -167,51 +191,19 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     ...({ shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 } as any),
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 16,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    paddingTop: 16,
-  },
-  statBox: {
+  cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16 },
+  linksContainer: { flexDirection: 'row', gap: 12 },
+  linkButton: {
     flex: 1,
-    alignItems: 'center',
-  },
-  statNum: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  statDivider: {
-    width: 1,
-    height: 32,
-  },
-  actions: {
-    gap: 12,
-  },
-  actionButton: {
-    height: 52,
+    padding: 16,
     borderRadius: 12,
-    justifyContent: 'center',
     alignItems: 'center',
+    gap: 8,
   },
-  actionButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  logoutButton: {
-    backgroundColor: '#FEF2F2',
-  },
+  linkEmoji: { fontSize: 24 },
+  linkLabel: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  actions: { gap: 12 },
+  actionButton: { height: 52, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  actionButtonText: { fontSize: 15, fontWeight: '600' },
+  logoutButton: { backgroundColor: '#FEF2F2' },
 });

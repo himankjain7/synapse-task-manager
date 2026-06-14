@@ -100,7 +100,13 @@ export default function WorkspacesScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const selectWorkspace = useWorkspaceStore((s) => s.selectWorkspace);
-  const { data, isLoading, isError, refetch, isRefetching } = useWorkspaces();
+  const {
+  data,
+  isLoading,
+  error,
+  refetch,
+  isRefetching,
+} = useWorkspaces();
 
   const handleWorkspacePress = useCallback(
     (workspace: WorkspaceWithOwner) => {
@@ -160,13 +166,13 @@ export default function WorkspacesScreen() {
 
         {isLoading && <SkeletonCard count={3} />}
 
-        {isError && (
-          <ErrorState
-            title="Could not load workspaces"
-            message="We encountered an error loading your workspaces. Pull to refresh."
-            onRetry={refetch}
-          />
-        )}
+        {!!error && !data && (
+  <ErrorState
+    title="Could not load workspaces"
+    message="We encountered an error loading your workspaces. Pull to refresh."
+    onRetry={refetch}
+  />
+)}
 
         {data && data.data.length === 0 && (
           <EmptyState

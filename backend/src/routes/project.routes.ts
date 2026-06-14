@@ -25,7 +25,7 @@ import {
  * - DELETE /workspaces/:workspaceId/projects/:id - Delete project
  * - GET /workspaces/:workspaceId/projects/:id/stats - Get project statistics
  */
-const router = Router();
+const router = Router({ mergeParams: true });
 
 /**
  * Apply authentication middleware to all routes
@@ -54,8 +54,14 @@ router.use(requireAuth);
  */
 router.post(
   '/',
+  (req, _res, next) => {
+    console.log('PROJECT CREATE REQUEST');
+    console.log('Params:', req.params);
+    console.log('Body:', req.body);
+    next();
+  },
   validateBody,
-  validateRequired(['name', 'workspaceId']),
+  validateRequired(['name']),
   sanitizeFields(['name', 'description']),
   ProjectController.createProject
 );

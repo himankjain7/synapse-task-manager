@@ -9,9 +9,19 @@ export const QueryKeys = {
     members: (id: string) => ['workspaces', 'members', id] as const,
   },
 
+  projects: {
+    all: ['projects'] as const,
+    lists: () => ['projects', 'list'] as const,
+    detail: (id: string) => ['projects', 'detail', id] as const,
+    byWorkspace: (workspaceId: string) => ['projects', 'workspace', workspaceId] as const,
+  },
+
   tasks: {
-    list: (filters?: Record<string, unknown>) => ['tasks', 'list', filters || {}] as const,
+    all: ['tasks'] as const,
+    lists: () => ['tasks', 'list'] as const,
+    byProject: (projectId: string) => ['tasks', 'project', projectId] as const,
     detail: (id: string) => ['tasks', 'detail', id] as const,
+    comments: (taskId: string) => ['tasks', 'comments', taskId] as const,
   },
 
   notifications: {

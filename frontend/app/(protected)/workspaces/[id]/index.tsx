@@ -7,10 +7,12 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../../../hooks/useTheme';
 import { useWorkspace, useDeleteWorkspace } from '../../../../hooks/useWorkspaces';
+import { useProjects } from '../../../../hooks/useProjects';
 import { useAuthStore } from '../../../../store/authStore';
 import { useWorkspaceStore } from '../../../../store/workspaceStore';
 import { useToastStore } from '../../../../store/toastStore';
@@ -18,8 +20,9 @@ import { Text } from '../../../../components/typography/Text';
 import { Heading } from '../../../../components/typography/Heading';
 import { LoadingView } from '../../../../components/feedback/LoadingView';
 import { ErrorState } from '../../../../components/feedback/ErrorState';
+import { EmptyState } from '../../../../components/feedback/EmptyState';
 import { getInitials } from '../../../../utils/formatting';
-import { formatDate } from '../../../../utils/date';
+import { formatDate, formatRelativeTime } from '../../../../utils/date';
 import { triggerHaptic } from '../../../../utils/haptics';
 
 export default function WorkspaceDetailScreen() {
@@ -31,6 +34,7 @@ export default function WorkspaceDetailScreen() {
   const showToast = useToastStore((s) => s.showToast);
 
   const { data: workspace, isLoading, isError, refetch } = useWorkspace(id);
+  const { data: projectsData, isLoading: projectsLoading } = useProjects(id);
   const { mutateAsync: deleteWorkspace, isPending: isDeleting } = useDeleteWorkspace();
 
   const isOwner = workspace?.ownerId === user?.id;
@@ -138,10 +142,89 @@ export default function WorkspaceDetailScreen() {
               <Text variant="caption" color="tertiary" style={styles.statLabel}>Members</Text>
             </TouchableOpacity>
           </View>
-          <View style={[styles.statCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <Text style={[styles.statValue, { color: theme.colors.success }]}>0</Text>
+          <TouchableOpacity
+            style={[styles.statCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+            onPress={() => {
+              triggerHaptic('light');
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.statValue, { color: theme.colors.success }]}>
+              {projectsData?.total ?? 0}
+            </Text>
             <Text variant="caption" color="tertiary" style={styles.statLabel}>Projects</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Projects Section */}
+        <View style={styles.projectsSection}>
+          <View style={styles.projectsSectionHeader}>
+            <Heading level={4}>Projects</Heading>
+            {isOwner && (
+              <TouchableOpacity
+                onPress={() => {
+                  triggerHaptic('light');
+                  router.push(`/(protected)/projects/create?workspaceId=${id}`);
+                }}
+                style={[styles.createProjectButton, { backgroundColor: theme.colors.primary }]}
+              >
+                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '600' }}>+ New Project</Text>
+              </TouchableOpacity>
+            )}
           </View>
+
+          {projectsLoading ? (
+            <View style={styles.loadingProjects}>
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            </View>
+          ) : !projectsData || projectsData.data.length === 0 ? (
+            <View style={styles.emptyProjects}>
+              <Text variant="bodyMedium" color="tertiary">No projects yet</Text>
+              {isOwner && (
+                <TouchableOpacity
+                  onPress={() => router.push(`/(protected)/projects/create?workspaceId=${id}`)}
+                  style={{ marginTop: 8 }}
+                >
+                  <Text color="primary" weight="semibold">Create your first project</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <View style={styles.projectList}>
+              {projectsData.data.map((project) => (
+                <TouchableOpacity
+                  key={project.id}
+                  style={[styles.projectCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                  onPress={() => {
+                    triggerHaptic('light');
+                    router.push(`/(protected)/projects/${project.id}?workspaceId=${id}`);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.projectIcon, { backgroundColor: project.color || theme.colors.primaryLight }]}>
+                    <Text style={styles.projectEmoji}>{project.icon || '📋'}</Text>
+                  </View>
+                  <View style={styles.projectInfo}>
+                    <Text weight="semibold">{project.name}</Text>
+                    {project.description && (
+                      <Text variant="bodySmall" color="secondary" numberOfLines={1}>
+                        {project.description}
+                      </Text>
+                    )}
+                    <Text variant="caption" color="tertiary">
+                      {project.completedTaskCount}/{project.taskCount} tasks
+                    </Text>
+                  </View>
+                  <View style={[styles.projectProgress, { backgroundColor: theme.colors.border }]}>
+                    <View style={[styles.projectProgressFill, {
+                      width: project.taskCount > 0 ? `${(project.completedTaskCount / project.taskCount) * 100}%` : '0%',
+                      backgroundColor: theme.colors.success,
+                    }]} />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.actions}>
@@ -246,6 +329,41 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: 20, fontWeight: '700' },
   statLabel: { marginTop: 2 },
+  projectsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  projectsSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  createProjectButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  loadingProjects: { paddingVertical: 24, alignItems: 'center' },
+  emptyProjects: { paddingVertical: 32, alignItems: 'center' },
+  projectList: { gap: 10 },
+  projectCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    gap: 10,
+  },
+  projectIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  projectEmoji: { fontSize: 20 },
+  projectInfo: { gap: 2, flex: 1 },
+  projectProgress: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  projectProgressFill: { height: '100%', borderRadius: 2 },
   actions: {
     paddingHorizontal: 20,
     gap: 12,

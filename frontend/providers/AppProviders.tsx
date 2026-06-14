@@ -7,6 +7,7 @@ import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useWorkspaceStore } from '../store/workspaceStore';
+import { useSocketEvents } from '../hooks/useSocket';
 
 interface AppProvidersProps {
   children: React.ReactNode;
@@ -50,10 +51,17 @@ export function AppProviders({ children, onHydrated }: AppProvidersProps) {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
+          <SocketEventsProvider />
           {children}
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
+
+function SocketEventsProvider() {
+  useSocketEvents();
+  return null;
+}
+
 export default AppProviders;

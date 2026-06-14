@@ -29,21 +29,16 @@ api.interceptors.request.use(
 
 // Response Interceptor: Transform errors & handle 401
 api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const transformed = transformError(error);
+  (response) => {
+    console.log('API SUCCESS:', response.config.url, response.data);
+    return response;
+  },
+  (error) => {
+    console.log('API ERROR URL:', error.config?.url);
+    console.log('API ERROR STATUS:', error.response?.status);
+    console.log('API ERROR DATA:', error.response?.data);
 
-    if (transformed.status === 401 && !isLoggingOut) {
-      isLoggingOut = true;
-
-      try {
-        await useAuthStore.getState().logout();
-      } finally {
-        isLoggingOut = false;
-      }
-    }
-
-    return Promise.reject(transformed);
+    return Promise.reject(transformError(error));
   }
 );
 
