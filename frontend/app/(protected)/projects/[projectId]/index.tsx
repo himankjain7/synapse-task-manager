@@ -337,8 +337,8 @@ const { mutateAsync: deleteProject } = useDeleteProject();
           <TouchableOpacity
   onPress={() =>
     router.push(
-      `/(protected)/workspaces/${workspaceId}/projects/${projectId}/tasks/create`
-    )
+  `/(protected)/projects/${projectId}/tasks/create`
+)
   }
   style={[
     styles.emptyCTA,
