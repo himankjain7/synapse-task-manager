@@ -8,8 +8,10 @@ generator client {
 }
 
 enum TaskStatus {
+  backlog
   todo
   in_progress
+  review
   done
 
   @@map("task_status")
@@ -98,9 +100,10 @@ model Project {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  owner       User?     @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner       User?        @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   tasks       Task[]
+  labels      TaskLabel[]
 
   @@map("projects")
 }
@@ -112,9 +115,11 @@ model Task {
   description String?
   status      TaskStatus   @default(todo)
   priority    TaskPriority @default(medium)
-  assignedTo  String?      @map("assigned_to") @db.Uuid
-  dueDate     DateTime?    @map("due_date") @db.Date
-  position    Int          @default(0)
+  assignedTo    String?      @map("assigned_to") @db.Uuid
+  dueDate       DateTime?    @map("due_date") @db.Date
+  estimatedHours Float?      @map("estimated_hours")
+  completedAt   DateTime?    @map("completed_at") @db.Timestamptz
+  position      Int          @default(0)
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime     @default(now()) @map("updated_at") @db.Timestamptz
   deletedAt   DateTime?    @map("deleted_at") @db.Timestamptz
@@ -122,6 +127,7 @@ model Task {
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignee    User?        @relation("AssignedTasks", fields: [assignedTo], references: [id], onDelete: SetNull)
   comments    Comment[]
+  labels      TaskLabelAssignment[]
 
   @@map("tasks")
 }
@@ -139,6 +145,32 @@ model Comment {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("comments")
+}
+
+model TaskLabel {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  name      String
+  color     String   @default("#6366F1")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  project  Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks    TaskLabelAssignment[]
+
+  @@unique([projectId, name])
+  @@map("task_labels")
+}
+
+model TaskLabelAssignment {
+  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  taskId  String @map("task_id") @db.Uuid
+  labelId String @map("label_id") @db.Uuid
+
+  task  Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label TaskLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, labelId])
+  @@map("task_label_assignments")
 }
 
 model Notification {

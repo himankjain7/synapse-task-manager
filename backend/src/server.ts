@@ -12,6 +12,7 @@ import workspaceRouter from './routes/workspace.routes';
 import projectRouter from './routes/project.routes';
 import taskRouter from './routes/task.routes';
 import commentRouter from './routes/comment.routes';
+import labelRouter from './routes/label.routes';
 
 // Import Middlewares
 import { errorHandler } from './middleware/error.middleware';
@@ -39,6 +40,8 @@ app.use('/api/v1/workspaces', workspaceRouter);
 app.use('/api/v1/workspaces/:workspaceId/projects', projectRouter);
 app.use('/api/v1/tasks', taskRouter);
 app.use('/api/v1/comments', commentRouter);
+app.use('/api/v1/projects/:projectId', labelRouter);
+app.use('/api/v1/tasks', labelRouter);
 
 // Global Exception Interceptor Middleware (must be registered last)
 app.use(errorHandler);

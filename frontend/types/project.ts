@@ -134,3 +134,35 @@ export interface CommentWithAuthor extends Comment {
 export interface CreateCommentInput {
   content: string;
 }
+
+export interface CreateLabelInput {
+  name: string;
+  color: string;
+}
+
+export interface ActivityLogItem {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  action: string;
+  details: Record<string, unknown>;
+  createdAt: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl: string | null;
+  };
+}
+
+export interface TaskWithDetails extends TaskWithAssignee {
+  estimatedHours: number | null;
+  completedAt: string | null;
+  workspaceId: string;
+  createdBy: {
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl: string | null;
+  };
+}

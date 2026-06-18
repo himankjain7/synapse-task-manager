@@ -18,11 +18,15 @@
  * Task status enum (values from Prisma)
  */
 export const TaskStatus = {
+  backlog: 'backlog',
   todo: 'todo',
   in_progress: 'in_progress',
+  review: 'review',
   done: 'done',
+  BACKLOG: 'backlog',
   TODO: 'todo',
   IN_PROGRESS: 'in_progress',
+  REVIEW: 'review',
   DONE: 'done',
 } as const;
 export type TaskStatus = typeof TaskStatus[keyof typeof TaskStatus];

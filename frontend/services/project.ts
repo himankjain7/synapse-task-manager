@@ -25,9 +25,12 @@ export const projectApi = {
     return response.data.data;
   },
 
-  get: async (id: string): Promise<ProjectWithStats> => {
+  get: async (
+    workspaceId: string,
+    id: string
+  ): Promise<ProjectWithStats> => {
     const response = await api.get<ApiResponse<ProjectWithStats>>(
-      `/api/v1/projects/${id}`
+      `/api/v1/workspaces/${workspaceId}/projects/${id}`
     );
 
     return response.data.data;
@@ -38,8 +41,6 @@ export const projectApi = {
     input: CreateProjectInput
   ): Promise<ProjectWithStats> => {
     try {
-      alert(`Workspace ID: ${workspaceId}`);
-
       const response = await api.post<ApiResponse<ProjectWithStats>>(
         `/api/v1/workspaces/${workspaceId}/projects`,
         input
@@ -60,18 +61,24 @@ export const projectApi = {
   },
 
   update: async (
+    workspaceId: string,
     id: string,
     input: UpdateProjectInput
   ): Promise<ProjectWithStats> => {
     const response = await api.patch<ApiResponse<ProjectWithStats>>(
-      `/api/v1/projects/${id}`,
+      `/api/v1/workspaces/${workspaceId}/projects/${id}`,
       input
     );
 
     return response.data.data;
   },
 
-  delete: async (id: string): Promise<void> => {
-    await api.delete(`/api/v1/projects/${id}`);
+  delete: async (
+    workspaceId: string,
+    id: string
+  ): Promise<void> => {
+    await api.delete(
+      `/api/v1/workspaces/${workspaceId}/projects/${id}`
+    );
   },
 };

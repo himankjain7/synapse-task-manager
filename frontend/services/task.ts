@@ -5,25 +5,29 @@ import {
 } from '../types/workspace';
 import {
   TaskWithAssignee,
+  TaskWithDetails,
   CommentWithAuthor,
   CreateTaskInput,
   UpdateTaskInput,
   ReorderTaskInput,
   TaskFilters,
   CreateCommentInput,
+  CreateLabelInput,
+  TaskLabel,
+  ActivityLogItem,
 } from '../types/project';
 
 export const taskApi = {
-  list: async (projectId: string, page = 1, limit = 50): Promise<PaginatedResponse<TaskWithAssignee>> => {
+  list: async (projectId: string, page = 1, limit = 50, filters?: TaskFilters): Promise<PaginatedResponse<TaskWithAssignee>> => {
     const response = await api.get<ApiResponse<PaginatedResponse<TaskWithAssignee>>>(
       `/api/v1/projects/${projectId}/tasks`,
-      { params: { page, limit } }
+      { params: { page, limit, ...filters } }
     );
     return response.data.data;
   },
 
-  get: async (id: string): Promise<TaskWithAssignee> => {
-    const response = await api.get<ApiResponse<TaskWithAssignee>>(`/api/v1/tasks/${id}`);
+  get: async (id: string): Promise<TaskWithDetails> => {
+    const response = await api.get<ApiResponse<TaskWithDetails>>(`/api/v1/tasks/${id}`);
     return response.data.data;
   },
 
@@ -74,5 +78,37 @@ export const taskApi = {
 
   deleteComment: async (taskId: string, commentId: string): Promise<void> => {
     await api.delete(`/api/v1/tasks/${taskId}/comments/${commentId}`);
+  },
+
+  getLabels: async (projectId: string): Promise<TaskLabel[]> => {
+    const response = await api.get<ApiResponse<TaskLabel[]>>(`/api/v1/projects/${projectId}/labels`);
+    return response.data.data;
+  },
+
+  createLabel: async (projectId: string, input: CreateLabelInput): Promise<TaskLabel> => {
+    const response = await api.post<ApiResponse<TaskLabel>>(`/api/v1/projects/${projectId}/labels`, input);
+    return response.data.data;
+  },
+
+  updateLabel: async (projectId: string, id: string, input: CreateLabelInput): Promise<TaskLabel> => {
+    const response = await api.patch<ApiResponse<TaskLabel>>(`/api/v1/projects/${projectId}/labels/${id}`, input);
+    return response.data.data;
+  },
+
+  deleteLabel: async (projectId: string, id: string): Promise<void> => {
+    await api.delete(`/api/v1/projects/${projectId}/labels/${id}`);
+  },
+
+  assignLabel: async (taskId: string, labelId: string): Promise<void> => {
+    await api.post(`/api/v1/tasks/${taskId}/labels`, { labelId });
+  },
+
+  removeLabel: async (taskId: string, labelId: string): Promise<void> => {
+    await api.delete(`/api/v1/tasks/${taskId}/labels/${labelId}`);
+  },
+
+  getActivity: async (workspaceId: string, limit = 50): Promise<ActivityLogItem[]> => {
+    const response = await api.get<ApiResponse<ActivityLogItem[]>>(`/api/v1/workspaces/${workspaceId}/activity`, { params: { limit } });
+    return response.data.data;
   },
 };

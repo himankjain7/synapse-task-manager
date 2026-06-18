@@ -5,12 +5,14 @@ import {
   CreateTaskInput,
   UpdateTaskInput,
   CreateCommentInput,
+  CreateLabelInput,
+  TaskFilters,
 } from '../types/project';
 
-export function useTasks(projectId: string | undefined) {
+export function useTasks(projectId: string | undefined, filters?: TaskFilters) {
   return useQuery({
-    queryKey: QueryKeys.tasks.byProject(projectId!),
-    queryFn: () => taskApi.list(projectId!),
+    queryKey: [...QueryKeys.tasks.byProject(projectId!), filters || {}],
+    queryFn: () => taskApi.list(projectId!, 1, 50, filters),
     enabled: !!projectId,
   });
 }
@@ -96,5 +98,65 @@ export function useDeleteComment() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.comments(variables.taskId) });
     },
+  });
+}
+
+export function useLabels(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['labels', 'project', projectId],
+    queryFn: () => taskApi.getLabels(projectId!),
+    enabled: !!projectId,
+  });
+}
+
+export function useCreateLabel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, input }: { projectId: string; input: CreateLabelInput }) =>
+      taskApi.createLabel(projectId, input),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['labels', 'project', variables.projectId] });
+    },
+  });
+}
+
+export function useDeleteLabel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, id }: { projectId: string; id: string }) =>
+      taskApi.deleteLabel(projectId, id),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['labels', 'project', variables.projectId] });
+    },
+  });
+}
+
+export function useAssignLabel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, labelId }: { taskId: string; labelId: string }) =>
+      taskApi.assignLabel(taskId, labelId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
+    },
+  });
+}
+
+export function useRemoveLabel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, labelId }: { taskId: string; labelId: string }) =>
+      taskApi.removeLabel(taskId, labelId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
+    },
+  });
+}
+
+export function useActivity(workspaceId: string | undefined, limit = 50) {
+  return useQuery({
+    queryKey: ['activity', workspaceId],
+    queryFn: () => taskApi.getActivity(workspaceId!, limit),
+    enabled: !!workspaceId,
   });
 }

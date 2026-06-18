@@ -14,42 +14,77 @@ export function useProjects(workspaceId: string | undefined) {
   });
 }
 
-export function useProject(id: string | undefined) {
+export function useProject(
+  workspaceId: string | undefined,
+  projectId: string | undefined
+) {
   return useQuery({
-    queryKey: QueryKeys.projects.detail(id!),
-    queryFn: () => projectApi.get(id!),
-    enabled: !!id,
+    queryKey: QueryKeys.projects.detail(projectId!),
+    queryFn: () => projectApi.get(workspaceId!, projectId!),
+    enabled: !!workspaceId && !!projectId,
   });
 }
 
 export function useCreateProject() {
   const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: ({ workspaceId, input }: { workspaceId: string; input: CreateProjectInput }) =>
-      projectApi.create(workspaceId, input),
+    mutationFn: ({
+      workspaceId,
+      input,
+    }: {
+      workspaceId: string;
+      input: CreateProjectInput;
+    }) => projectApi.create(workspaceId, input),
+
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.projects.byWorkspace(variables.workspaceId) });
+      queryClient.invalidateQueries({
+        queryKey: QueryKeys.projects.byWorkspace(
+          variables.workspaceId
+        ),
+      });
     },
   });
 }
 
 export function useUpdateProject() {
   const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: UpdateProjectInput }) =>
-      projectApi.update(id, input),
+    mutationFn: ({
+      workspaceId,
+      id,
+      input,
+    }: {
+      workspaceId: string;
+      id: string;
+      input: UpdateProjectInput;
+    }) => projectApi.update(workspaceId, id, input),
+
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+      queryClient.invalidateQueries({
+        queryKey: QueryKeys.projects.all,
+      });
     },
   });
 }
 
 export function useDeleteProject() {
   const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: (id: string) => projectApi.delete(id),
+    mutationFn: ({
+      workspaceId,
+      id,
+    }: {
+      workspaceId: string;
+      id: string;
+    }) => projectApi.delete(workspaceId, id),
+
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+      queryClient.invalidateQueries({
+        queryKey: QueryKeys.projects.all,
+      });
     },
   });
 }
