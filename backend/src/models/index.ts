@@ -286,6 +286,12 @@ export interface TaskWithAssignee extends Task {
  */
 export interface TaskWithDetails extends TaskWithAssignee {
   project: Project;
+
+  labels?: {
+    id: string;
+    name: string;
+    color: string;
+  }[];
 }
 
 /**

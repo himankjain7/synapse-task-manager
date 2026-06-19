@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../../../hooks/useTheme';
-import { useTask, useUpdateTask, useDeleteTask, useTaskComments, useCreateComment, useDeleteComment, useLabels, useAssignLabel, useRemoveLabel, useActivity } from '../../../../hooks/useTasks';
+import { useTask, useUpdateTask, useDeleteTask, useTaskComments, useCreateComment, useDeleteComment, useLabels, useAssignLabel, useRemoveLabel, useActivity, useCreateLabel} from '../../../../hooks/useTasks';
 import { useToastStore } from '../../../../store/toastStore';
 import { Text } from '../../../../components/typography/Text';
 import { Heading } from '../../../../components/typography/Heading';
@@ -82,6 +82,7 @@ const { mutateAsync: removeComment } =
   const { data: labelsData } = useLabels(task?.projectId);
   const { mutateAsync: assignLabel } = useAssignLabel();
   const { mutateAsync: removeLabel } = useRemoveLabel();
+  const { mutateAsync: createLabel } = useCreateLabel();
   const { data: activityData } = useActivity(workspaceId);
 
   const [editingTitle, setEditingTitle] = useState(false);
@@ -91,9 +92,13 @@ const { mutateAsync: removeComment } =
   const [commentText, setCommentText] = useState('');
   const [showLabelPicker, setShowLabelPicker] = useState(false);
 
+  const [newLabelName, setNewLabelName] = useState('');
+
   const comments = commentsData?.data ?? [];
   const labels = labelsData ?? [];
   const taskLabels = task?.labels ?? [];
+  console.log('TASK', task);
+  console.log('TASK LABELS', task?.labels);
   const activityItems = activityData?.filter(a => {
     const details = (a as any).details;
     return details?.taskId === id || details?.commentTaskId === id;
@@ -227,17 +232,74 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
   }, [id, removeComment, showToast]);
 
   const handleToggleLabel = useCallback(async (labelId: string) => {
-    try {
-      const isAssigned = taskLabels.some(l => l.id === labelId);
-      if (isAssigned) {
-        await removeLabel({ taskId: id!, labelId });
-      } else {
-        await assignLabel({ taskId: id!, labelId });
-      }
-      triggerHaptic('light');
-      refetch();
-    } catch { triggerHaptic('error'); showToast('Failed to update labels', 'error'); }
-  }, [id, taskLabels, assignLabel, removeLabel, refetch, showToast]);
+  try {
+    console.log('TASK ID:', id);
+    console.log('LABEL ID:', labelId);
+    console.log('TASK LABELS', taskLabels);
+    console.log('CLICKED LABEL', labelId);
+
+    const isAssigned = taskLabels.some(l => l.id === labelId);
+
+    if (isAssigned) {
+      console.log('REMOVING LABEL');
+      await removeLabel({
+        taskId: id!,
+        labelId,
+      });
+    } else {
+      console.log('ASSIGNING LABEL');
+      await assignLabel({
+        taskId: id!,
+        labelId,
+      });
+    }
+
+    triggerHaptic('light');
+    await refetch();
+
+  } catch (error) {
+    console.log('LABEL ERROR:', error);
+    triggerHaptic('error');
+    showToast('Failed to update labels', 'error');
+  }
+}, [
+  id,
+  taskLabels,
+  assignLabel,
+  removeLabel,
+  refetch,
+  showToast,
+]);
+
+  const handleCreateLabel = useCallback(async () => {
+  if (!newLabelName.trim() || !projectId) return;
+
+  try {
+    await createLabel({
+      projectId,
+      input: {
+        name: newLabelName.trim(),
+        color: '#6366F1',
+      },
+    });
+
+    setNewLabelName('');
+    triggerHaptic('success');
+    showToast('Label created', 'success');
+
+    refetch();
+  } catch (error) {
+    console.error(error);
+    triggerHaptic('error');
+    showToast('Failed to create label', 'error');
+  }
+}, [
+  newLabelName,
+  projectId,
+  createLabel,
+  refetch,
+  showToast,
+]);
 
   if (isLoading) {
     return <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -625,6 +687,34 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
+              <TextInput
+  value={newLabelName}
+  onChangeText={setNewLabelName}
+  placeholder="Enter label name"
+  placeholderTextColor={theme.colors.text.tertiary}
+  style={{
+  borderWidth: 1,
+  borderColor: theme.colors.border,
+  borderRadius: 12,
+  padding: 12,
+  marginBottom: 12,
+}}
+/>
+
+<TouchableOpacity
+  onPress={handleCreateLabel}
+  style={{
+    backgroundColor: '#6366F1',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    alignItems: 'center',
+  }}
+>
+  <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
+    Create Label
+  </Text>
+</TouchableOpacity>
               {labels.map(label => {
                 const isAssigned = taskLabels.some(l => l.id === label.id);
                 return (

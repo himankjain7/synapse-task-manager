@@ -104,12 +104,20 @@ export class TaskService {
    */
   static async getTaskById(taskId: string): Promise<TaskWithDetails | null> {
     const task = await prisma.task.findUnique({
-      where: { id: taskId },
-    });
+  where: { id: taskId },
+  include: {
+    labels: {
+      include: {
+        label: true,
+      },
+    },
+  },
+});
 
     if (!task) {
       return null;
     }
+    const taskLabels = task.labels.map((assignment: any) => assignment.label);
 
     const [assignee, project] = await Promise.all([
       task.assignedTo
@@ -127,23 +135,22 @@ export class TaskService {
     }
 
     return {
-      ...task,
-      assignee: assignee
-        ? {
-            id: assignee.id,
-            email: assignee.email,
-            name: assignee.name,
-            avatarUrl: assignee.avatarUrl,
-            createdAt: assignee.createdAt,
-            updatedAt: assignee.updatedAt,
-          }
-        : null,
-      project: {
-        ...project,
-        status: project.status as ProjectStatus,
-      },
-    };
-  }
+  ...task,
+  labels: taskLabels,
+  assignee: assignee ? {
+    id: assignee.id,
+    email: assignee.email,
+    name: assignee.name,
+    avatarUrl: assignee.avatarUrl,
+    createdAt: assignee.createdAt,
+    updatedAt: assignee.updatedAt,
+  } : null,
+  project: {
+    ...project,
+    status: project.status as ProjectStatus,
+  },
+};
+}
 
   /**
    * Get all tasks in project with filtering and pagination
@@ -243,8 +250,15 @@ export class TaskService {
   ): Promise<TaskWithAssignee> {
     // Get task
     const task = await prisma.task.findUnique({
-      where: { id: taskId },
-    });
+  where: { id: taskId },
+  include: {
+    labels: {
+      include: {
+        label: true,
+      },
+    },
+  },
+});
 
     if (!task) {
       throw new Error('Task not found');
@@ -349,8 +363,11 @@ export class TaskService {
   static async deleteTask(taskId: string, userId: string): Promise<void> {
     // Get task
     const task = await prisma.task.findUnique({
-      where: { id: taskId },
-    });
+  where: { id: taskId },
+  include: {
+    labels: true,
+  },
+});
 
     if (!task) {
       throw new Error('Task not found');
