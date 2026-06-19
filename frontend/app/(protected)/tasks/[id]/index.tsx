@@ -56,14 +56,27 @@ export default function TaskDetailScreen() {
   const showToast = useToastStore((s) => s.showToast);
   const scrollRef = useRef<ScrollView>(null);
 
-  const { data: task, isLoading, isError, refetch } =
-  useTask(undefined, id);
-  const projectId = task?.projectId;
-  const { data: commentsData, refetch: refetchComments } = useTaskComments(id);
-  const { mutateAsync: updateTask, isPending: updating } = useUpdateTask();
-  const { mutateAsync: deleteTask } = useDeleteTask();
-  const { mutateAsync: addComment } = useCreateComment();
-  const { mutateAsync: removeComment } = useDeleteComment();
+  const taskId = id as string;
+
+const { data: task, isLoading, isError, refetch } =
+  useTask(undefined, taskId);
+
+const projectId = task?.projectId;
+
+const { data: commentsData, refetch: refetchComments } =
+  useTaskComments(taskId);
+
+const { mutateAsync: updateTask, isPending: updating } =
+  useUpdateTask();
+
+const { mutateAsync: deleteTask } =
+  useDeleteTask();
+
+const { mutateAsync: addComment } =
+  useCreateComment();
+
+const { mutateAsync: removeComment } =
+  useDeleteComment();
 
   const workspaceId = task && 'workspaceId' in task ? (task as any).workspaceId : undefined;
   const { data: labelsData } = useLabels(task?.projectId);
@@ -109,19 +122,43 @@ export default function TaskDetailScreen() {
   }, [titleDraft, task, id, updateTask, showToast]);
 
   const handleSaveDescription = useCallback(async () => {
-    if (descriptionDraft === (task?.description || '')) { setEditingDescription(false); return; }
-    Keyboard.dismiss();
-    try {
-      await updateTask({
-  projectId: projectId!,
-  id: id!,
-  input: { description: descriptionDraft || '' }
-});
-      triggerHaptic('light');
-      showToast('Description updated', 'success');
-      setEditingDescription(false);
-    } catch { triggerHaptic('error'); showToast('Failed to update', 'error'); }
-  }, [descriptionDraft, task, id, updateTask, showToast]);
+  if (descriptionDraft === (task?.description ?? '')) {
+    setEditingDescription(false);
+    return;
+  }
+
+  Keyboard.dismiss();
+
+  try {
+    console.log('DESCRIPTION SAVING:', descriptionDraft);
+
+    await updateTask({
+      projectId: projectId!,
+      id: taskId,
+      input: {
+        description: descriptionDraft.trim(),
+      },
+    });
+
+    await refetch();
+
+    console.log('DESCRIPTION UPDATED SUCCESS');
+
+    showToast('Description updated', 'success');
+    setEditingDescription(false);
+  } catch (error) {
+    console.error('DESCRIPTION ERROR:', error);
+    showToast('Failed to update description', 'error');
+  }
+}, [
+  descriptionDraft,
+  task,
+  projectId,
+  taskId,
+  updateTask,
+  refetch,
+  showToast,
+]);
 
   const handleStatusChange = useCallback((newStatus: TaskStatus) => {
   triggerHaptic('light');
@@ -277,25 +314,84 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
           )}
 
           {/* Description - Inline Editable */}
-          {editingDescription ? (
-            <TextInput
-              style={[styles.descInput, { color: theme.colors.text.secondary, borderColor: theme.colors.primary }]}
-              value={descriptionDraft}
-              onChangeText={setDescriptionDraft}
-              onBlur={handleSaveDescription}
-              multiline
-              autoFocus
-              maxLength={2000}
-            />
-          ) : (
-            <TouchableOpacity onLongPress={() => { setEditingDescription(true); triggerHaptic('light'); }}>
-              {task.description ? (
-                <Text variant="bodyLarge" color="secondary" style={styles.description}>{task.description}</Text>
-              ) : (
-                <Text variant="bodyMedium" color="tertiary" style={styles.description}>Add description...</Text>
-              )}
-            </TouchableOpacity>
-          )}
+{editingDescription ? (
+  <>
+    <TextInput
+      style={[
+        styles.descInput,
+        {
+          color: theme.colors.text.secondary,
+          borderColor: theme.colors.primary,
+        },
+      ]}
+      value={descriptionDraft}
+      onChangeText={setDescriptionDraft}
+      multiline
+      autoFocus
+      maxLength={2000}
+    />
+
+    <View
+      style={{
+        flexDirection: 'row',
+        gap: 16,
+        marginTop: 12,
+      }}
+    >
+      <TouchableOpacity onPress={handleSaveDescription}>
+        <Text
+          style={{
+            color: '#2563EB',
+            fontWeight: '600',
+          }}
+        >
+          Save
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => {
+          setDescriptionDraft(task?.description || '');
+          setEditingDescription(false);
+        }}
+      >
+        <Text
+          style={{
+            color: '#EF4444',
+            fontWeight: '600',
+          }}
+        >
+          Cancel
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </>
+) : (
+  <TouchableOpacity
+    onLongPress={() => {
+      setEditingDescription(true);
+      triggerHaptic('light');
+    }}
+  >
+    {task.description ? (
+      <Text
+        variant="bodyLarge"
+        color="secondary"
+        style={styles.description}
+      >
+        {task.description}
+      </Text>
+    ) : (
+      <Text
+        variant="bodyMedium"
+        color="tertiary"
+        style={styles.description}
+      >
+        Add description...
+      </Text>
+    )}
+  </TouchableOpacity>
+)}
 
           {/* Quick Meta Row */}
           <View style={styles.quickMeta}>
