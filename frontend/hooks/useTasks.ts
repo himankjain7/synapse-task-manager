@@ -17,11 +17,14 @@ export function useTasks(projectId: string | undefined, filters?: TaskFilters) {
   });
 }
 
-export function useTask(id: string | undefined) {
+export function useTask(
+  projectId: string | undefined,
+  id: string | undefined
+) {
   return useQuery({
     queryKey: QueryKeys.tasks.detail(id!),
-    queryFn: () => taskApi.get(id!),
-    enabled: !!id,
+    queryFn: () => taskApi.get(projectId!, id!),
+    enabled: !!projectId && !!id,
   });
 }
 
@@ -40,22 +43,52 @@ export function useCreateTask() {
 export function useUpdateTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: UpdateTaskInput }) =>
-      taskApi.update(id, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
-    },
+    mutationFn: ({
+  projectId,
+  id,
+  input,
+}: {
+  projectId: string;
+  id: string;
+  input: UpdateTaskInput;
+}) =>
+  taskApi.update(projectId, id, input),
+    onSuccess: (_data, variables) => {
+  queryClient.invalidateQueries({
+    queryKey: QueryKeys.tasks.byProject(variables.projectId)
+  });
+
+  queryClient.invalidateQueries({
+    queryKey: QueryKeys.tasks.detail(variables.id)
+  });
+
+  queryClient.invalidateQueries({
+    queryKey: QueryKeys.projects.all
+  });
+},
   });
 }
 
 export function useDeleteTask() {
   const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: (id: string) => taskApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+    mutationFn: ({
+      projectId,
+      id,
+    }: {
+      projectId: string;
+      id: string;
+    }) => taskApi.delete(projectId, id),
+
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: QueryKeys.tasks.byProject(variables.projectId),
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: QueryKeys.projects.all,
+      });
     },
   });
 }

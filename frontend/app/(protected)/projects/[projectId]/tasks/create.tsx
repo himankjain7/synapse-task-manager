@@ -20,7 +20,6 @@ import { triggerHaptic } from '../../../../../utils/haptics';
 import { TaskPriority, TaskStatus } from '../../../../../types/project';
 
 const PRIORITIES: { key: TaskPriority; label: string; color: string }[] = [
-  { key: 'none', label: 'None', color: '#64748B' },
   { key: 'low', label: 'Low', color: '#64748B' },
   { key: 'medium', label: 'Medium', color: '#3B82F6' },
   { key: 'high', label: 'High', color: '#F59E0B' },
@@ -45,7 +44,7 @@ export default function CreateTaskScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TaskStatus>('todo');
-  const [priority, setPriority] = useState<TaskPriority>('none');
+  const [priority, setPriority] = useState<TaskPriority>('low');
 
   const handleCreate = useCallback(async () => {
     if (!title.trim()) {

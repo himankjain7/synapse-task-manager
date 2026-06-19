@@ -38,8 +38,8 @@ app.get('/health', (_req, res) => {
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/workspaces', workspaceRouter);
 app.use('/api/v1/workspaces/:workspaceId/projects', projectRouter);
-app.use('/api/v1/tasks', taskRouter);
-app.use('/api/v1/comments', commentRouter);
+app.use('/api/v1/projects/:projectId/tasks', taskRouter);
+app.use('/api/v1/tasks/:taskId/comments', commentRouter);
 app.use('/api/v1/projects/:projectId', labelRouter);
 app.use('/api/v1/tasks', labelRouter);
 

@@ -117,7 +117,6 @@ model Task {
   priority    TaskPriority @default(medium)
   assignedTo    String?      @map("assigned_to") @db.Uuid
   dueDate       DateTime?    @map("due_date") @db.Date
-  estimatedHours Float?      @map("estimated_hours")
   completedAt   DateTime?    @map("completed_at") @db.Timestamptz
   position      Int          @default(0)
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz

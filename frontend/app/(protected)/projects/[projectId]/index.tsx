@@ -138,7 +138,7 @@ function TaskCard({
             <Text weight="semibold" style={styles.taskTitle} numberOfLines={2}>{task.title}</Text>
 
             <View style={styles.taskMeta}>
-              {task.priority !== 'none' && (
+              {task.priority !== 'low' && (
                 <View style={[styles.metaPill, { backgroundColor: (PRIORITY_COLORS[task.priority] || '#64748B') + '18' }]}>
                   <Text style={[styles.metaPillText, { color: PRIORITY_COLORS[task.priority] || '#64748B' }]} numberOfLines={1}>
                     {task.priority}
@@ -155,18 +155,38 @@ function TaskCard({
               )}
             </View>
 
-            {task.labels.length > 0 && (
-              <View style={styles.labelRow}>
-                {task.labels.slice(0, 2).map(l => (
-                  <View key={l.id} style={[styles.miniLabel, { backgroundColor: l.color + '20', borderColor: l.color }]}>
-                    <Text style={{ fontSize: 9, fontWeight: '600', color: l.color }}>{l.name}</Text>
-                  </View>
-                ))}
-                {task.labels.length > 2 && (
-                  <Text variant="caption" color="tertiary">+{task.labels.length - 2}</Text>
-                )}
-              </View>
-            )}
+            {task.labels?.length > 0 && (
+  <View style={styles.labelRow}>
+    {task.labels?.slice(0, 2).map(l => (
+      <View
+        key={l.id}
+        style={[
+          styles.miniLabel,
+          {
+            backgroundColor: l.color + '20',
+            borderColor: l.color,
+          },
+        ]}
+      >
+        <Text
+          style={{
+            fontSize: 9,
+            fontWeight: '600',
+            color: l.color,
+          }}
+        >
+          {l.name}
+        </Text>
+      </View>
+    ))}
+
+    {task.labels?.length > 2 && (
+      <Text variant="caption" color="tertiary">
+        +{(task.labels?.length ?? 0) - 2}
+      </Text>
+    )}
+  </View>
+)}
 
             <View style={styles.taskFooter}>
               {task.assignee ? (
@@ -234,7 +254,13 @@ const { mutateAsync: deleteProject } = useDeleteProject();
   const handleStatusChange = useCallback(async (task: TaskWithAssignee, newStatus: TaskStatus) => {
     try {
       triggerHaptic('light');
-      await updateTask({ id: task.id, input: { status: newStatus } });
+      await updateTask({
+  projectId,
+  id: task.id,
+  input: {
+    status: newStatus,
+  },
+});
       showToast(`Moved to ${COLUMNS.find(c => c.key === newStatus)?.label}`, 'success');
     } catch {
       triggerHaptic('error');

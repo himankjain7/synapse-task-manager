@@ -1,6 +1,6 @@
 export type ProjectStatus = 'active' | 'archived';
 export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
-export type TaskPriority = 'none' | 'low' | 'medium' | 'high' | 'urgent';
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface Project {
   id: string;

@@ -61,7 +61,7 @@ router.use(requireAuth);
 router.post(
   '/',
   validateBody,
-  validateRequired(['title', 'projectId']),
+  validateRequired(['title']),
   sanitizeFields(['title', 'description']),
   TaskController.createTask
 );

@@ -35,7 +35,7 @@ export class CommentController {
    */
   static createComment = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
-    const { taskId } = req.body;
+    const { taskId } = req.params;
 
     if (!userId) {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -106,11 +106,14 @@ export class CommentController {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 20;
 
-  const result = await CommentService.getUserComments(
-    userId,
-    page,
-    limit
-  );
+  const { taskId } = req.params;
+
+const result = await CommentService.getTaskComments(
+  taskId,
+  userId,
+  page,
+  limit
+);
 
   res.status(200).json({
     success: true,
@@ -277,7 +280,7 @@ export class CommentController {
    * }
    */
   static getCommentCount = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const taskId = req.query.taskId as string;
+    const { taskId } = req.params;
 
 if (!taskId) {
   throw new APIError(

@@ -36,7 +36,6 @@ const STATUSES: { key: TaskStatus; label: string; color: string }[] = [
 ];
 
 const PRIORITIES: { key: TaskPriority; label: string; color: string }[] = [
-  { key: 'none', label: 'None', color: '#64748B' },
   { key: 'low', label: 'Low', color: '#64748B' },
   { key: 'medium', label: 'Medium', color: '#3B82F6' },
   { key: 'high', label: 'High', color: '#F59E0B' },
@@ -57,7 +56,9 @@ export default function TaskDetailScreen() {
   const showToast = useToastStore((s) => s.showToast);
   const scrollRef = useRef<ScrollView>(null);
 
-  const { data: task, isLoading, isError, refetch } = useTask(id);
+  const { data: task, isLoading, isError, refetch } =
+  useTask(undefined, id);
+  const projectId = task?.projectId;
   const { data: commentsData, refetch: refetchComments } = useTaskComments(id);
   const { mutateAsync: updateTask, isPending: updating } = useUpdateTask();
   const { mutateAsync: deleteTask } = useDeleteTask();
@@ -96,7 +97,11 @@ export default function TaskDetailScreen() {
     if (!titleDraft.trim() || titleDraft === task?.title) { setEditingTitle(false); return; }
     Keyboard.dismiss();
     try {
-      await updateTask({ id: id!, input: { title: titleDraft.trim() } });
+      await updateTask({
+  projectId: projectId!,
+  id: id!,
+  input: { title: titleDraft.trim() }
+});
       triggerHaptic('light');
       showToast('Title updated', 'success');
       setEditingTitle(false);
@@ -107,7 +112,11 @@ export default function TaskDetailScreen() {
     if (descriptionDraft === (task?.description || '')) { setEditingDescription(false); return; }
     Keyboard.dismiss();
     try {
-      await updateTask({ id: id!, input: { description: descriptionDraft || '' } });
+      await updateTask({
+  projectId: projectId!,
+  id: id!,
+  input: { description: descriptionDraft || '' }
+});
       triggerHaptic('light');
       showToast('Description updated', 'success');
       setEditingDescription(false);
@@ -115,27 +124,52 @@ export default function TaskDetailScreen() {
   }, [descriptionDraft, task, id, updateTask, showToast]);
 
   const handleStatusChange = useCallback((newStatus: TaskStatus) => {
-    triggerHaptic('light');
-    updateTask({ id: id!, input: { status: newStatus } }).catch(() => {
+  triggerHaptic('light');
+
+  updateTask({
+    projectId: projectId!,
+    id: id!,
+    input: { status: newStatus }
+  })
+    .then((res) => {
+      console.log('STATUS UPDATED', res);
+      refetch();
+    })
+    .catch((err) => {
+      console.log('STATUS ERROR', err);
       triggerHaptic('error');
       showToast('Failed to update status', 'error');
     });
-  }, [id, updateTask, showToast]);
+}, [projectId, id, updateTask, refetch, showToast]);
 
-  const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
-    triggerHaptic('light');
-    updateTask({ id: id!, input: { priority: newPriority } }).catch(() => {
+const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
+  triggerHaptic('light');
+
+  updateTask({
+    projectId: projectId!,
+    id: id!,
+    input: { priority: newPriority }
+  })
+    .then((res) => {
+      console.log('PRIORITY UPDATED', res);
+      refetch();
+    })
+    .catch((err) => {
+      console.log('PRIORITY ERROR', err);
       triggerHaptic('error');
       showToast('Failed to update priority', 'error');
     });
-  }, [id, updateTask, showToast]);
+}, [projectId, id, updateTask, refetch, showToast]);
 
   const handleDeleteTask = useCallback(() => {
     triggerHaptic('warning');
     Alert.alert('Delete Task', 'This action cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
-        try { await deleteTask(id!); triggerHaptic('success'); showToast('Task deleted', 'success'); router.back(); }
+        try { await deleteTask({
+  projectId: projectId!,
+  id: id!,
+}); triggerHaptic('success'); showToast('Task deleted', 'success'); router.back(); }
         catch { triggerHaptic('error'); showToast('Failed to delete', 'error'); }
       }},
     ]);
@@ -214,7 +248,7 @@ export default function TaskDetailScreen() {
           <View style={[styles.statusBanner, { backgroundColor: (currentStatus?.color || '#64748B') + '12' }]}>
             <View style={[styles.statusBannerDot, { backgroundColor: currentStatus?.color }]} />
             <Text weight="semibold" style={{ color: currentStatus?.color }}>{currentStatus?.label}</Text>
-            {task.priority !== 'none' && (
+            {task.priority !== 'low' && (
               <>
                 <Text style={{ color: theme.colors.text.tertiary, marginHorizontal: 8 }}>·</Text>
                 <View style={[styles.priorityBadge, { backgroundColor: (currentPriority?.color || '#64748B') + '20' }]}>
@@ -278,18 +312,23 @@ export default function TaskDetailScreen() {
                 <Text variant="caption" color="tertiary">Assignee</Text>
                 <View style={styles.assigneeRow}>
                   <View style={[styles.assigneeAvatar, { backgroundColor: theme.colors.primaryLight }]}>
-                    <Text style={[styles.assigneeAvatarText, { color: theme.colors.primary }]}>
-                      {getInitials(task.assignee.name)}
+                    <Text style={[styles.activityAvatar, { color: theme.colors.primary }]}>
+                      {getInitials(
+  task?.assignee?.name ??
+  'Unassigned'
+)}
                     </Text>
                   </View>
-                  <Text variant="bodySmall" weight="semibold" numberOfLines={1}>{task.assignee.name}</Text>
+                  <Text variant="bodySmall" weight="semibold" numberOfLines={1}>{
+ task?.assignee?.name ??
+ 'Unassigned'}</Text>
                 </View>
               </View>
             )}
             {task.createdBy && (
               <View style={[styles.quickMetaItem, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                 <Text variant="caption" color="tertiary">Created by</Text>
-                <Text variant="bodySmall" weight="semibold" numberOfLines={1}>{task.createdBy.name}</Text>
+                <Text variant="bodySmall" weight="semibold" numberOfLines={1}>{task.createdBy?.name ?? 'Unknown User'}</Text>
               </View>
             )}
           </View>
@@ -371,12 +410,12 @@ export default function TaskDetailScreen() {
                   <View style={styles.activityHeader}>
                     <View style={[styles.activityAvatar, { backgroundColor: theme.colors.primaryLight }]}>
                       <Text style={[styles.activityAvatarText, { color: theme.colors.primary }]}>
-                        {getInitials(log.user.name)}
+                        {getInitials(log.user?.name ?? 'Unknown User')}
                       </Text>
                     </View>
                     <View style={styles.activityTextWrap}>
                       <Text variant="bodySmall">
-                        <Text weight="semibold">{log.user.name}</Text>
+                        <Text weight="semibold">{log.user?.name ?? 'Unknown User'}</Text>
                         {' '}{actionText}
                       </Text>
                     </View>
@@ -398,29 +437,64 @@ export default function TaskDetailScreen() {
             </View>
           )}
           {comments.map(comment => {
-            const isAuthor = comment.authorId === user?.id;
-            return (
-              <View key={comment.id} style={[styles.commentRow, { borderBottomColor: theme.colors.border }]}>
-                <View style={[styles.commentAvatar, { backgroundColor: theme.colors.primaryLight }]}>
-                  <Text style={[styles.commentAvatarText, { color: theme.colors.primary }]}>
-                    {getInitials(comment.author.name)}
-                  </Text>
-                </View>
-                <View style={styles.commentBody}>
-                  <View style={styles.commentMeta}>
-                    <Text weight="semibold" variant="bodySmall">{comment.author.name}</Text>
-                    <Text variant="caption" color="tertiary">{formatRelativeTime(comment.createdAt)}</Text>
-                  </View>
-                  <Text variant="bodyMedium">{comment.content}</Text>
-                  {isAuthor && (
-                    <TouchableOpacity onPress={() => handleDeleteComment(comment.id)} style={styles.deleteComment}>
-                      <Text variant="caption" color="danger">Delete</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            );
-          })}
+  console.log('COMMENT', comment);
+  console.log('USER', user);
+
+  const isAuthor = (comment as any).userId === user?.id;
+
+  return (
+    <View
+      key={comment.id}
+      style={[
+        styles.commentRow,
+        { borderBottomColor: theme.colors.border },
+      ]}
+    >
+      <View
+        style={[
+          styles.commentAvatar,
+          { backgroundColor: theme.colors.primaryLight },
+        ]}
+      >
+        <Text
+          style={[
+            styles.commentAvatarText,
+            { color: theme.colors.primary },
+          ]}
+        >
+          {getInitials((comment as any).user?.name ?? 'U')}
+        </Text>
+      </View>
+
+      <View style={styles.commentBody}>
+        <View style={styles.commentMeta}>
+          <Text weight="semibold" variant="bodySmall">
+            {(comment as any).user?.name ?? 'Unknown User'}
+          </Text>
+
+          <Text variant="caption" color="tertiary">
+            {formatRelativeTime(comment.createdAt)}
+          </Text>
+        </View>
+
+        <Text variant="bodyMedium">
+          {comment.content}
+        </Text>
+
+        {isAuthor && (
+          <TouchableOpacity
+            onPress={() => handleDeleteComment(comment.id)}
+            style={styles.deleteComment}
+          >
+            <Text variant="caption" color="danger">
+              Delete
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+})}
         </ScrollView>
 
         {/* Comment Input */}

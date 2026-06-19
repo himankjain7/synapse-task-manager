@@ -52,8 +52,9 @@ router.use(requireAuth);
  */
 router.post(
   '/',
+  validateUUID('taskId'),
   validateBody,
-  validateRequired(['taskId', 'content']),
+  validateRequired(['content']),
   sanitizeFields(['content']),
   CommentController.createComment
 );

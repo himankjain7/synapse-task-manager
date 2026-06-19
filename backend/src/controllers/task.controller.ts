@@ -37,7 +37,7 @@ export class TaskController {
    */
   static createTask = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
-    const { projectId } = req.body;
+    const { projectId } = req.params;
 
     if (!userId) {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -103,6 +103,7 @@ export class TaskController {
    */
    static listTasks = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const userId = req.auth?.userId;
+  const { projectId } = req.params;
 
   if (!userId) {
     throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -116,12 +117,10 @@ export class TaskController {
     limit: parseInt(req.query.limit as string) || 20,
   };
 
-  const result = await TaskService.getUserTasks(
+  const result = await TaskService.getProjectTasks(
+    projectId,
     userId,
-    filters.status,
-    filters.page,
-    filters.limit
-
+    filters
   );
 
   res.status(200).json({
