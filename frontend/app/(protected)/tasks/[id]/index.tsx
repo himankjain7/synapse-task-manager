@@ -15,7 +15,8 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../../../hooks/useTheme';
-import { useTask, useUpdateTask, useDeleteTask, useTaskComments, useCreateComment, useDeleteComment, useLabels, useAssignLabel, useRemoveLabel, useActivity, useCreateLabel} from '../../../../hooks/useTasks';
+import { useTask, useUpdateTask, useDeleteTask, useTaskComments, useCreateComment, useDeleteComment, useLabels, useAssignLabel, useRemoveLabel } from '../../../../hooks/useTasks';
+import { useMembers } from '../../../../hooks/useWorkspaces';
 import { useToastStore } from '../../../../store/toastStore';
 import { Text } from '../../../../components/typography/Text';
 import { Heading } from '../../../../components/typography/Heading';
@@ -36,16 +37,28 @@ const STATUSES: { key: TaskStatus; label: string; color: string }[] = [
 ];
 
 const PRIORITIES: { key: TaskPriority; label: string; color: string }[] = [
-  { key: 'low', label: 'Low', color: '#64748B' },
-  { key: 'medium', label: 'Medium', color: '#3B82F6' },
-  { key: 'high', label: 'High', color: '#F59E0B' },
-  { key: 'urgent', label: 'Urgent', color: '#EF4444' },
+  { key: 'low', label: 'Low', color: '#3B82F6' },
+  { key: 'medium', label: 'Medium', color: '#F59E0B' },
+  { key: 'high', label: 'High', color: '#EF4444' },
+  { key: 'urgent', label: 'Urgent', color: '#DC2626' },
 ];
 
-function SectionTitle({ children, color }: { children: React.ReactNode; color: string }) {
-  return (
-    <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1, marginBottom: 8, marginTop: 16, color }}>{children}</Text>
-  );
+function formatActivity(action: string, details: Record<string, unknown>, userName: string): string {
+  const actions: Record<string, string> = {
+    task_created: `${userName} created this task`,
+    task_deleted: `${userName} deleted this task`,
+    task_updated: `${userName} updated this task`,
+    task_status_changed: `${userName} changed status from ${details.from || '?'} to ${details.to || '?'}`,
+    task_priority_changed: `${userName} changed priority to ${details.to || '?'}`,
+    task_description_updated: `${userName} updated the description`,
+    task_assigned: details.to ? `${userName} assigned task to ${details.to}` : `${userName} removed assignee`,
+    label_added: `${userName} added label ${details.label || ''}`,
+    label_removed: `${userName} removed label ${details.label || ''}`,
+    comment_added: `${userName} added a comment`,
+    comment_deleted: `${userName} deleted a comment`,
+    due_date_changed: details.to ? `${userName} set due date to ${details.to}` : `${userName} removed due date`,
+  };
+  return actions[action] || `${userName} ${action.replace(/_/g, ' ')}`;
 }
 
 export default function TaskDetailScreen() {
@@ -56,34 +69,20 @@ export default function TaskDetailScreen() {
   const showToast = useToastStore((s) => s.showToast);
   const scrollRef = useRef<ScrollView>(null);
 
-  const taskId = id as string;
+  const { data: task, isLoading, isError, refetch } =
+  useTask(id);
+  const { data: commentsData, refetch: refetchComments } = useTaskComments(id);
+  const { mutateAsync: updateTask, isPending: updating } = useUpdateTask();
+  const { mutateAsync: deleteTask } = useDeleteTask();
+  const { mutateAsync: addComment } = useCreateComment();
+  const { mutateAsync: removeComment } = useDeleteComment();
 
-const { data: task, isLoading, isError, refetch } =
-  useTask(undefined, taskId);
-
-const projectId = task?.projectId;
-
-const { data: commentsData, refetch: refetchComments } =
-  useTaskComments(taskId);
-
-const { mutateAsync: updateTask, isPending: updating } =
-  useUpdateTask();
-
-const { mutateAsync: deleteTask } =
-  useDeleteTask();
-
-const { mutateAsync: addComment } =
-  useCreateComment();
-
-const { mutateAsync: removeComment } =
-  useDeleteComment();
-
-  const workspaceId = task && 'workspaceId' in task ? (task as any).workspaceId : undefined;
-  const { data: labelsData } = useLabels(task?.projectId);
+  const workspaceId = task ? (task as any).workspaceId || (task as any).project?.workspaceId : undefined;
+  const projectId = task?.projectId;
+  const { data: membersData } = useMembers(workspaceId);
+  const { data: labelsData } = useLabels(projectId);
   const { mutateAsync: assignLabel } = useAssignLabel();
   const { mutateAsync: removeLabel } = useRemoveLabel();
-  const { mutateAsync: createLabel } = useCreateLabel();
-  const { data: activityData } = useActivity(workspaceId);
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
@@ -91,129 +90,68 @@ const { mutateAsync: removeComment } =
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [commentText, setCommentText] = useState('');
   const [showLabelPicker, setShowLabelPicker] = useState(false);
-
-  const [newLabelName, setNewLabelName] = useState('');
+  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const comments = commentsData?.data ?? [];
   const labels = labelsData ?? [];
   const taskLabels = task?.labels ?? [];
-  console.log('TASK', task);
-  console.log('TASK LABELS', task?.labels);
-  const activityItems = activityData?.filter(a => {
-    const details = (a as any).details;
-    return details?.taskId === id || details?.commentTaskId === id;
-  }) ?? [];
+  const members = membersData?.data ?? [];
 
   useEffect(() => {
     if (task) {
       setTitleDraft(task.title);
-      setDescriptionDraft(task.description ?? '');
+      setDescriptionDraft(task.description || '');
     }
   }, [task]);
 
   const handleSaveTitle = useCallback(async () => {
     if (!titleDraft.trim() || titleDraft === task?.title) { setEditingTitle(false); return; }
     Keyboard.dismiss();
-    try {
-      await updateTask({
-  projectId: projectId!,
-  id: id!,
-  input: { title: titleDraft.trim() }
-});
-      triggerHaptic('light');
-      showToast('Title updated', 'success');
-      setEditingTitle(false);
-    } catch { triggerHaptic('error'); showToast('Failed to update', 'error'); }
+    try { await updateTask({ id: id!, input: { title: titleDraft.trim() } }); triggerHaptic('light'); showToast('Title updated', 'success'); setEditingTitle(false); }
+    catch { triggerHaptic('error'); showToast('Failed to update', 'error'); }
   }, [titleDraft, task, id, updateTask, showToast]);
 
   const handleSaveDescription = useCallback(async () => {
-  if (descriptionDraft === (task?.description ?? '')) {
-    setEditingDescription(false);
-    return;
-  }
-
-  Keyboard.dismiss();
-
-  try {
-    console.log('DESCRIPTION SAVING:', descriptionDraft);
-
-    await updateTask({
-      projectId: projectId!,
-      id: taskId,
-      input: {
-        description: descriptionDraft.trim(),
-      },
-    });
-
-    await refetch();
-
-    console.log('DESCRIPTION UPDATED SUCCESS');
-
-    showToast('Description updated', 'success');
-    setEditingDescription(false);
-  } catch (error) {
-    console.error('DESCRIPTION ERROR:', error);
-    showToast('Failed to update description', 'error');
-  }
-}, [
-  descriptionDraft,
-  task,
-  projectId,
-  taskId,
-  updateTask,
-  refetch,
-  showToast,
-]);
+    if (descriptionDraft === (task?.description || '')) { setEditingDescription(false); return; }
+    Keyboard.dismiss();
+    try { await updateTask({ id: id!, input: { description: descriptionDraft || null } as any }); triggerHaptic('light'); showToast('Description updated', 'success'); setEditingDescription(false); }
+    catch { triggerHaptic('error'); showToast('Failed to update', 'error'); }
+  }, [descriptionDraft, task, id, updateTask, showToast]);
 
   const handleStatusChange = useCallback((newStatus: TaskStatus) => {
-  triggerHaptic('light');
+    triggerHaptic('light');
+    updateTask({ id: id!, input: { status: newStatus } }).catch(() => { triggerHaptic('error'); showToast('Failed to update status', 'error'); });
+  }, [id, updateTask, showToast]);
 
-  updateTask({
-    projectId: projectId!,
-    id: id!,
-    input: { status: newStatus }
-  })
-    .then((res) => {
-      console.log('STATUS UPDATED', res);
-      refetch();
-    })
-    .catch((err) => {
-      console.log('STATUS ERROR', err);
-      triggerHaptic('error');
-      showToast('Failed to update status', 'error');
-    });
-}, [projectId, id, updateTask, refetch, showToast]);
+  const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
+    triggerHaptic('light');
+    updateTask({ id: id!, input: { priority: newPriority } }).catch(() => { triggerHaptic('error'); showToast('Failed to update priority', 'error'); });
+  }, [id, updateTask, showToast]);
 
-const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
-  triggerHaptic('light');
+  const handleAssigneeChange = useCallback(async (assigneeId: string | null) => {
+    setShowAssigneePicker(false);
+    triggerHaptic('light');
+    try {
+      await updateTask({ id: id!, input: { assigneeId } as any });
+      showToast(assigneeId ? 'Task assigned' : 'Assignee removed', 'success');
+    } catch { triggerHaptic('error'); showToast('Failed to assign', 'error'); }
+  }, [id, updateTask, showToast]);
 
-  updateTask({
-    projectId: projectId!,
-    id: id!,
-    input: { priority: newPriority }
-  })
-    .then((res) => {
-      console.log('PRIORITY UPDATED', res);
-      refetch();
-    })
-    .catch((err) => {
-      console.log('PRIORITY ERROR', err);
-      triggerHaptic('error');
-      showToast('Failed to update priority', 'error');
-    });
-}, [projectId, id, updateTask, refetch, showToast]);
+  const handleDueDateChange = useCallback(async (date: string | null) => {
+    setShowDatePicker(false);
+    triggerHaptic('light');
+    try {
+      await updateTask({ id: id!, input: { dueDate: date } as any });
+      showToast(date ? 'Due date set' : 'Due date removed', 'success');
+    } catch { triggerHaptic('error'); showToast('Failed to update due date', 'error'); }
+  }, [id, updateTask, showToast]);
 
   const handleDeleteTask = useCallback(() => {
     triggerHaptic('warning');
     Alert.alert('Delete Task', 'This action cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try { await deleteTask({
-  projectId: projectId!,
-  id: id!,
-}); triggerHaptic('success'); showToast('Task deleted', 'success'); router.back(); }
-        catch { triggerHaptic('error'); showToast('Failed to delete', 'error'); }
-      }},
+      { text: 'Delete', style: 'destructive', onPress: async () => { try { await deleteTask(id!); triggerHaptic('success'); showToast('Task deleted', 'success'); router.back(); } catch { triggerHaptic('error'); showToast('Failed to delete', 'error'); } } },
     ]);
   }, [id, deleteTask, router, showToast]);
 
@@ -227,79 +165,19 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
   const handleDeleteComment = useCallback((commentId: string) => {
     Alert.alert('Delete Comment', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { removeComment({ taskId: id!, commentId }).catch(() => showToast('Failed to delete', 'error')); }},
+      { text: 'Delete', style: 'destructive', onPress: () => { removeComment({ taskId: id!, commentId }).catch(() => showToast('Failed to delete', 'error')); } },
     ]);
   }, [id, removeComment, showToast]);
 
   const handleToggleLabel = useCallback(async (labelId: string) => {
-  try {
-    console.log('TASK ID:', id);
-    console.log('LABEL ID:', labelId);
-    console.log('TASK LABELS', taskLabels);
-    console.log('CLICKED LABEL', labelId);
-
-    const isAssigned = taskLabels.some(l => l.id === labelId);
-
-    if (isAssigned) {
-      console.log('REMOVING LABEL');
-      await removeLabel({
-        taskId: id!,
-        labelId,
-      });
-    } else {
-      console.log('ASSIGNING LABEL');
-      await assignLabel({
-        taskId: id!,
-        labelId,
-      });
-    }
-
-    triggerHaptic('light');
-    await refetch();
-
-  } catch (error) {
-    console.log('LABEL ERROR:', error);
-    triggerHaptic('error');
-    showToast('Failed to update labels', 'error');
-  }
-}, [
-  id,
-  taskLabels,
-  assignLabel,
-  removeLabel,
-  refetch,
-  showToast,
-]);
-
-  const handleCreateLabel = useCallback(async () => {
-  if (!newLabelName.trim() || !projectId) return;
-
-  try {
-    await createLabel({
-      projectId,
-      input: {
-        name: newLabelName.trim(),
-        color: '#6366F1',
-      },
-    });
-
-    setNewLabelName('');
-    triggerHaptic('success');
-    showToast('Label created', 'success');
-
-    refetch();
-  } catch (error) {
-    console.error(error);
-    triggerHaptic('error');
-    showToast('Failed to create label', 'error');
-  }
-}, [
-  newLabelName,
-  projectId,
-  createLabel,
-  refetch,
-  showToast,
-]);
+    try {
+      const isAssigned = taskLabels.some(l => l.id === labelId);
+      if (isAssigned) await removeLabel({ taskId: id!, labelId });
+      else await assignLabel({ taskId: id!, labelId });
+      triggerHaptic('light');
+      refetch();
+    } catch { triggerHaptic('error'); showToast('Failed to update labels', 'error'); }
+  }, [id, taskLabels, assignLabel, removeLabel, refetch, showToast]);
 
   if (isLoading) {
     return <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -317,10 +195,7 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
   const currentStatus = STATUSES.find(s => s.key === task.status);
   const currentPriority = PRIORITIES.find(p => p.key === task.priority);
   const unassignedLabels = labels.filter(l => !taskLabels.some(tl => tl.id === l.id));
-
-  const activityLogs: any[] = activityItems.length > 0 ? activityItems : [
-    { id: 'created', action: 'task_created', createdAt: task.createdAt, user: task.createdBy, details: {} },
-  ];
+  const currentAssignee = members.find(m => m.userId === task.assigneeId);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -329,13 +204,10 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
           <Text color="primary" weight="semibold">Back</Text>
         </TouchableOpacity>
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => {
-            triggerHaptic('light');
-            Alert.alert('Task Options', undefined, [
-              { text: 'Delete', style: 'destructive', onPress: handleDeleteTask },
-              { text: 'Cancel', style: 'cancel' },
-            ]);
-          }} style={styles.headerBtn}>
+          <TouchableOpacity onPress={() => { triggerHaptic('light'); Alert.alert('Task Options', undefined, [
+            { text: 'Delete', style: 'destructive', onPress: handleDeleteTask },
+            { text: 'Cancel', style: 'cancel' },
+          ]); }} style={styles.headerBtn}>
             <Text style={{ fontSize: 18 }}>⋯</Text>
           </TouchableOpacity>
         </View>
@@ -345,29 +217,20 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
         <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Status Banner */}
           <View style={[styles.statusBanner, { backgroundColor: (currentStatus?.color || '#64748B') + '12' }]}>
-            <View style={[styles.statusBannerDot, { backgroundColor: currentStatus?.color }]} />
+            <View style={[styles.bannerDot, { backgroundColor: currentStatus?.color }]} />
             <Text weight="semibold" style={{ color: currentStatus?.color }}>{currentStatus?.label}</Text>
             {task.priority !== 'low' && (
-              <>
-                <Text style={{ color: theme.colors.text.tertiary, marginHorizontal: 8 }}>·</Text>
-                <View style={[styles.priorityBadge, { backgroundColor: (currentPriority?.color || '#64748B') + '20' }]}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: currentPriority?.color }}>{task.priority}</Text>
-                </View>
-              </>
+              <View style={[styles.priorityBadge, { backgroundColor: (currentPriority?.color || '#64748B') + '20' }]}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: currentPriority?.color }}>{task.priority}</Text>
+              </View>
             )}
           </View>
 
-          {/* Title - Inline Editable */}
+          {/* Title */}
           {editingTitle ? (
-            <TextInput
-              style={[styles.titleInput, { color: theme.colors.text.primary, borderColor: theme.colors.primary }]}
-              value={titleDraft}
-              onChangeText={setTitleDraft}
-              onBlur={handleSaveTitle}
-              onSubmitEditing={handleSaveTitle}
-              autoFocus
-              maxLength={200}
-              returnKeyType="done"
+            <TextInput style={[styles.titleInput, { color: theme.colors.text.primary, borderColor: theme.colors.primary }]}
+              value={titleDraft} onChangeText={setTitleDraft} onBlur={handleSaveTitle} onSubmitEditing={handleSaveTitle}
+              autoFocus maxLength={200} returnKeyType="done"
             />
           ) : (
             <TouchableOpacity onLongPress={() => { setEditingTitle(true); triggerHaptic('light'); }}>
@@ -375,129 +238,93 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
             </TouchableOpacity>
           )}
 
-          {/* Description - Inline Editable */}
-{editingDescription ? (
-  <>
-    <TextInput
-      style={[
-        styles.descInput,
-        {
-          color: theme.colors.text.secondary,
-          borderColor: theme.colors.primary,
-        },
-      ]}
-      value={descriptionDraft}
-      onChangeText={setDescriptionDraft}
-      multiline
-      autoFocus
-      maxLength={2000}
-    />
+          {/* Description */}
+          {editingDescription ? (
+            <TextInput style={[styles.descInput, { color: theme.colors.text.secondary, borderColor: theme.colors.primary }]}
+              value={descriptionDraft} onChangeText={setDescriptionDraft} onBlur={handleSaveDescription}
+              multiline autoFocus maxLength={2000}
+            />
+          ) : (
+            <TouchableOpacity onLongPress={() => { setEditingDescription(true); triggerHaptic('light'); }}>
+              {task.description ? (
+                <Text variant="bodyLarge" color="secondary" style={styles.description}>{task.description}</Text>
+              ) : (
+                <Text variant="bodyMedium" color="tertiary" style={styles.description}>Add description...</Text>
+              )}
+            </TouchableOpacity>
+          )}
 
-    <View
-      style={{
-        flexDirection: 'row',
-        gap: 16,
-        marginTop: 12,
-      }}
-    >
-      <TouchableOpacity onPress={handleSaveDescription}>
-        <Text
-          style={{
-            color: '#2563EB',
-            fontWeight: '600',
-          }}
-        >
-          Save
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={() => {
-          setDescriptionDraft(task?.description || '');
-          setEditingDescription(false);
-        }}
-      >
-        <Text
-          style={{
-            color: '#EF4444',
-            fontWeight: '600',
-          }}
-        >
-          Cancel
-        </Text>
-      </TouchableOpacity>
-    </View>
-  </>
-) : (
-  <TouchableOpacity
-    onLongPress={() => {
-      setEditingDescription(true);
-      triggerHaptic('light');
-    }}
-  >
-    {task.description ? (
-      <Text
-        variant="bodyLarge"
-        color="secondary"
-        style={styles.description}
-      >
-        {task.description}
-      </Text>
-    ) : (
-      <Text
-        variant="bodyMedium"
-        color="tertiary"
-        style={styles.description}
-      >
-        Add description...
-      </Text>
-    )}
-  </TouchableOpacity>
-)}
-
-          {/* Quick Meta Row */}
-          <View style={styles.quickMeta}>
-            {task.dueDate && (
-              <View style={[styles.quickMetaItem, { backgroundColor: isOverdue ? theme.colors.dangerLight : theme.colors.surface, borderColor: theme.colors.border }]}>
-                <Text variant="caption" color={isOverdue ? 'danger' : 'tertiary'}>Due</Text>
-                <Text variant="bodySmall" color={isOverdue ? 'danger' : 'primary'} weight="semibold">
-                  {formatDate(task.dueDate)}
-                </Text>
-              </View>
-            )}
-            {task.assignee && (
-              <View style={[styles.quickMetaItem, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                <Text variant="caption" color="tertiary">Assignee</Text>
-                <View style={styles.assigneeRow}>
-                  <View style={[styles.assigneeAvatar, { backgroundColor: theme.colors.primaryLight }]}>
-                    <Text style={[styles.activityAvatar, { color: theme.colors.primary }]}>
-                      {getInitials(
-  task?.assignee?.name ??
-  'Unassigned'
-)}
-                    </Text>
+          {/* Meta Cards Row */}
+          <View style={styles.metaRow}>
+            {/* Assignee Card */}
+            <TouchableOpacity style={[styles.metaCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+              onPress={() => { triggerHaptic('light'); setShowAssigneePicker(true); }}
+            >
+              <Text variant="caption" color="tertiary">Assignee</Text>
+              {task.assignee ? (
+                <View style={styles.metaAssignee}>
+                  <View style={[styles.metaAvatar, { backgroundColor: theme.colors.primaryLight }]}>
+                    <Text style={[styles.metaAvatarText, { color: theme.colors.primary }]}>{getInitials(task.assignee.name)}</Text>
                   </View>
-                  <Text variant="bodySmall" weight="semibold" numberOfLines={1}>{
- task?.assignee?.name ??
- 'Unassigned'}</Text>
+                  <Text variant="bodySmall" weight="semibold" numberOfLines={1}>{task.assignee.name}</Text>
                 </View>
-              </View>
-            )}
-            {task.createdBy && (
-              <View style={[styles.quickMetaItem, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                <Text variant="caption" color="tertiary">Created by</Text>
-                <Text variant="bodySmall" weight="semibold" numberOfLines={1}>{task.createdBy?.name ?? 'Unknown User'}</Text>
-              </View>
-            )}
+              ) : (
+                <Text variant="bodySmall" color="tertiary">Unassigned</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Due Date Card */}
+            <TouchableOpacity style={[styles.metaCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+              onPress={() => { triggerHaptic('light'); setShowDatePicker(true); }}
+            >
+              <Text variant="caption" color="tertiary">Due Date</Text>
+              {task.dueDate ? (
+                <Text variant="bodySmall" weight="semibold" color={isOverdue ? 'danger' : 'primary'}>
+                  {formatDate(task.dueDate)}
+                  {isOverdue && ' (Overdue)'}
+                </Text>
+              ) : (
+                <Text variant="bodySmall" color="tertiary">Set date</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Creator Card */}
+            <TouchableOpacity style={[styles.metaCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Text variant="caption" color="tertiary">Created by</Text>
+              <View style={styles.metaAssignee}>
+  <View
+    style={[
+      styles.metaAvatar,
+      { backgroundColor: theme.colors.primaryLight },
+    ]}
+  >
+    <Text
+      style={[
+        styles.metaAvatarText,
+        { color: theme.colors.primary },
+      ]}
+    >
+      {getInitials(task.createdBy?.name ?? 'Unknown')}
+    </Text>
+  </View>
+
+  <Text
+    variant="bodySmall"
+    weight="semibold"
+    numberOfLines={1}
+  >
+    {task.createdBy?.name ?? 'Unknown User'}
+  </Text>
+</View>
+            </TouchableOpacity>
           </View>
 
           {/* Status Selector */}
-          <SectionTitle color={theme.colors.text.secondary}>STATUS</SectionTitle>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>STATUS</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.chipRow}>
               {STATUSES.map(s => (
-                <TouchableOpacity
-                  key={s.key}
+                <TouchableOpacity key={s.key}
                   style={[styles.chip, { backgroundColor: task.status === s.key ? s.color + '18' : theme.colors.surface, borderColor: task.status === s.key ? s.color : theme.colors.border }]}
                   onPress={() => handleStatusChange(s.key)}
                 >
@@ -509,12 +336,11 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
           </ScrollView>
 
           {/* Priority Selector */}
-          <SectionTitle color={theme.colors.text.secondary}>PRIORITY</SectionTitle>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>PRIORITY</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.chipRow}>
               {PRIORITIES.map(p => (
-                <TouchableOpacity
-                  key={p.key}
+                <TouchableOpacity key={p.key}
                   style={[styles.chip, { backgroundColor: task.priority === p.key ? p.color + '20' : theme.colors.surface, borderColor: task.priority === p.key ? p.color : theme.colors.border }]}
                   onPress={() => handlePriorityChange(p.key)}
                 >
@@ -524,9 +350,9 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
             </View>
           </ScrollView>
 
-          {/* Labels Section */}
-          <View style={styles.labelsSectionHeader}>
-            <SectionTitle color={theme.colors.text.secondary}>LABELS</SectionTitle>
+          {/* Labels */}
+          <View style={styles.sectionRow}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>LABELS</Text>
             <TouchableOpacity onPress={() => { triggerHaptic('light'); setShowLabelPicker(true); }}>
               <Text variant="caption" color="primary">Manage</Text>
             </TouchableOpacity>
@@ -534,7 +360,7 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
           {taskLabels.length > 0 ? (
             <View style={styles.chipRow}>
               {taskLabels.map(l => (
-                <View key={l.id} style={[styles.labellPill, { backgroundColor: l.color + '20', borderColor: l.color }]}>
+                <View key={l.id} style={[styles.labelPill, { backgroundColor: l.color + '20', borderColor: l.color }]}>
                   <View style={[styles.labelDot, { backgroundColor: l.color }]} />
                   <Text style={{ fontSize: 12, fontWeight: '500', color: l.color }}>{l.name}</Text>
                 </View>
@@ -545,130 +371,64 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
           )}
 
           {/* Activity Timeline */}
-          <SectionTitle color={theme.colors.text.secondary}>ACTIVITY</SectionTitle>
-          {activityLogs.map((log) => {
-            const actionLabels: Record<string, string> = {
-              task_created: 'created this task',
-              task_updated: 'updated this task',
-              task_status_changed: 'changed the status',
-              task_assigned: 'updated the assignee',
-              comment_added: 'added a comment',
-            };
-            let actionText = actionLabels[log.action] || log.action.replace(/_/g, ' ');
-            let details = log.details as any;
-
-            if (log.action === 'task_status_changed' && details) {
-              actionText = `moved from ${details.from || '?'} to ${details.to || '?'}`;
-            }
-
-            return (
+          <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary, marginTop: 20 }]}>ACTIVITY</Text>
+          {[task, ...(task as any)._activity || []].length > 0 ? (
+            (task as any)._activity?.filter(Boolean).map((log: any) => (
               <View key={log.id} style={[styles.activityRow, { borderBottomColor: theme.colors.border }]}>
-                <View style={[styles.activityDot, { backgroundColor: log.action === 'comment_added' ? theme.colors.success : theme.colors.primary }]} />
+                <View style={[styles.activityDot, { backgroundColor: log.action?.includes('comment') ? theme.colors.success : theme.colors.primary }]} />
                 <View style={styles.activityContent}>
-                  <View style={styles.activityHeader}>
-                    <View style={[styles.activityAvatar, { backgroundColor: theme.colors.primaryLight }]}>
-                      <Text style={[styles.activityAvatarText, { color: theme.colors.primary }]}>
-                        {getInitials(log.user?.name ?? 'Unknown User')}
-                      </Text>
-                    </View>
-                    <View style={styles.activityTextWrap}>
-                      <Text variant="bodySmall">
-                        <Text weight="semibold">{log.user?.name ?? 'Unknown User'}</Text>
-                        {' '}{actionText}
-                      </Text>
-                    </View>
-                  </View>
+                  <Text variant="bodySmall">
+                    {formatActivity(log.action || 'task_updated', log.details || {}, log.user?.name || 'Someone')}
+                  </Text>
                   <Text variant="caption" color="tertiary">{formatRelativeTime(log.createdAt)}</Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={styles.emptySection}>
+              <Text variant="bodyMedium" color="tertiary">No activity yet</Text>
+            </View>
+          )}
+
+          {/* Comments */}
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>COMMENTS ({comments.length})</Text>
+          {comments.length === 0 && (
+            <View style={styles.emptySection}><Text variant="bodyMedium" color="tertiary">No comments yet</Text></View>
+          )}
+          {comments.map(comment => {
+            const isAuthor = comment.userId === user?.id;
+            const commentUserName = comment.user?.name ?? 'Unknown';
+            return (
+              <View key={comment.id} style={[styles.commentRow, { borderBottomColor: theme.colors.border }]}>
+                <View style={[styles.commentAvatar, { backgroundColor: theme.colors.primaryLight }]}>
+                  <Text style={[styles.commentAvatarText, { color: theme.colors.primary }]}>{getInitials(commentUserName)}</Text>
+                </View>
+                <View style={styles.commentBody}>
+                  <View style={styles.commentMeta}>
+                    <Text weight="semibold" variant="bodySmall">{commentUserName}</Text>
+                    <Text variant="caption" color="tertiary">{formatRelativeTime(comment.createdAt)}</Text>
+                  </View>
+                  <Text variant="bodyMedium">{comment.content}</Text>
+                  {isAuthor && (
+                    <TouchableOpacity onPress={() => handleDeleteComment(comment.id)} style={{ marginTop: 4 }}>
+                      <Text variant="caption" color="danger">Delete</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             );
           })}
-
-          {/* Divider */}
-          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-
-          {/* Comments */}
-          <SectionTitle color={theme.colors.text.secondary}>COMMENTS ({comments.length})</SectionTitle>
-          {comments.length === 0 && (
-            <View style={styles.emptyComments}>
-              <Text variant="bodyMedium" color="tertiary">No comments yet</Text>
-            </View>
-          )}
-          {comments.map(comment => {
-  console.log('COMMENT', comment);
-  console.log('USER', user);
-
-  const isAuthor = (comment as any).userId === user?.id;
-
-  return (
-    <View
-      key={comment.id}
-      style={[
-        styles.commentRow,
-        { borderBottomColor: theme.colors.border },
-      ]}
-    >
-      <View
-        style={[
-          styles.commentAvatar,
-          { backgroundColor: theme.colors.primaryLight },
-        ]}
-      >
-        <Text
-          style={[
-            styles.commentAvatarText,
-            { color: theme.colors.primary },
-          ]}
-        >
-          {getInitials((comment as any).user?.name ?? 'U')}
-        </Text>
-      </View>
-
-      <View style={styles.commentBody}>
-        <View style={styles.commentMeta}>
-          <Text weight="semibold" variant="bodySmall">
-            {(comment as any).user?.name ?? 'Unknown User'}
-          </Text>
-
-          <Text variant="caption" color="tertiary">
-            {formatRelativeTime(comment.createdAt)}
-          </Text>
-        </View>
-
-        <Text variant="bodyMedium">
-          {comment.content}
-        </Text>
-
-        {isAuthor && (
-          <TouchableOpacity
-            onPress={() => handleDeleteComment(comment.id)}
-            style={styles.deleteComment}
-          >
-            <Text variant="caption" color="danger">
-              Delete
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  );
-})}
         </ScrollView>
 
         {/* Comment Input */}
-        <View style={[styles.commentInputBar, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
-          <TextInput
-            style={[styles.commentInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text.primary }]}
-            placeholder="Add a comment..."
-            placeholderTextColor={theme.colors.text.tertiary}
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline
-            maxLength={1000}
+        <View style={[styles.commentBar, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
+          <TextInput style={[styles.commentInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text.primary }]}
+            placeholder="Add a comment..." placeholderTextColor={theme.colors.text.tertiary}
+            value={commentText} onChangeText={setCommentText} multiline maxLength={1000}
           />
-          <TouchableOpacity
-            onPress={handleAddComment}
-            style={[styles.sendButton, { backgroundColor: commentText.trim() ? theme.colors.primary : theme.colors.border }]}
+          <TouchableOpacity onPress={handleAddComment}
+            style={[styles.sendBtn, { backgroundColor: commentText.trim() ? theme.colors.primary : theme.colors.border }]}
             disabled={!commentText.trim()}
           >
             <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '600' }}>Send</Text>
@@ -676,10 +436,102 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
         </View>
       </KeyboardAvoidingView>
 
+      {/* Assignee Picker Modal */}
+      <Modal visible={showAssigneePicker} transparent animationType="slide" onRequestClose={() => setShowAssigneePicker(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowAssigneePicker(false)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
+              <Heading level={4}>Assign Task</Heading>
+              <TouchableOpacity onPress={() => setShowAssigneePicker(false)}>
+                <Text color="primary" weight="semibold">Done</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 4 }}>
+              {task.assignee && (
+                <TouchableOpacity style={[styles.assigneeOption, { backgroundColor: theme.colors.dangerLight, borderColor: theme.colors.danger }]}
+                  onPress={() => handleAssigneeChange(null)}
+                >
+                  <Text color="danger" weight="semibold">Remove Assignment</Text>
+                </TouchableOpacity>
+              )}
+              {members.map(m => {
+                const isSelected = m.userId === task.assigneeId;
+                return (
+                  <TouchableOpacity key={m.id}
+                    style={[styles.assigneeOption, { backgroundColor: isSelected ? theme.colors.primaryLight : theme.colors.surface, borderColor: isSelected ? theme.colors.primary : theme.colors.border }]}
+                    onPress={() => handleAssigneeChange(m.userId)}
+                  >
+                    <View style={[styles.assigneeAvatar, { backgroundColor: theme.colors.primaryLight }]}>
+                      <Text style={[styles.assigneeAvatarText, { color: theme.colors.primary }]}>{getInitials(m.user.name)}</Text>
+                    </View>
+                    <Text weight={isSelected ? 'semibold' : 'regular'}>{m.user.name}</Text>
+                    {isSelected && <View style={[styles.checkCircle, { backgroundColor: theme.colors.primary }]}><Text style={{ color: '#FFF', fontSize: 10 }}>✓</Text></View>}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Due Date Picker Modal */}
+      <Modal visible={showDatePicker} transparent animationType="slide" onRequestClose={() => setShowDatePicker(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowDatePicker(false)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
+              <Heading level={4}>Set Due Date</Heading>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                <Text color="primary" weight="semibold">Done</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 16, gap: 8 }}>
+              {task.dueDate && (
+                <TouchableOpacity style={[styles.dateOption, { borderColor: theme.colors.danger }]}
+                  onPress={() => handleDueDateChange(null)}
+                >
+                  <Text color="danger" weight="semibold">Remove Due Date</Text>
+                </TouchableOpacity>
+              )}
+              {[
+                { label: 'Today', days: 0 },
+                { label: 'Tomorrow', days: 1 },
+                { label: 'This Weekend', days: (7 - new Date().getDay()) % 7 || 7 },
+                { label: 'Next Week', days: 7 },
+                { label: 'Two Weeks', days: 14 },
+              ].map(opt => {
+                const d = new Date();
+                d.setDate(d.getDate() + opt.days);
+                const dateStr = d.toISOString().split('T')[0];
+                return (
+                  <TouchableOpacity key={opt.label}
+                    style={[styles.dateOption, { borderColor: task.dueDate === dateStr ? theme.colors.primary : theme.colors.border, backgroundColor: task.dueDate === dateStr ? theme.colors.primaryLight : theme.colors.surface }]}
+                    onPress={() => handleDueDateChange(dateStr)}
+                  >
+                    <Text weight={task.dueDate === dateStr ? 'semibold' : 'regular'}>{opt.label}</Text>
+                    <Text variant="caption" color="tertiary">{d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity style={[styles.dateOption, { borderColor: theme.colors.primary, borderStyle: 'dashed' }]}
+                onPress={() => {
+                  setShowDatePicker(false);
+                  Alert.prompt?.('Custom Date', 'Enter date (YYYY-MM-DD):', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Set', onPress: (val?: string) => { if (val) handleDueDateChange(val); } },
+                  ]);
+                }}
+              >
+                <Text color="primary">Custom Date...</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Label Picker Modal */}
-      <Modal visible={showLabelPicker} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
+      <Modal visible={showLabelPicker} transparent animationType="slide" onRequestClose={() => setShowLabelPicker(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowLabelPicker(false)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Heading level={4}>Manage Labels</Heading>
               <TouchableOpacity onPress={() => setShowLabelPicker(false)}>
@@ -687,43 +539,14 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
-              <TextInput
-  value={newLabelName}
-  onChangeText={setNewLabelName}
-  placeholder="Enter label name"
-  placeholderTextColor={theme.colors.text.tertiary}
-  style={{
-  borderWidth: 1,
-  borderColor: theme.colors.border,
-  borderRadius: 12,
-  padding: 12,
-  marginBottom: 12,
-}}
-/>
-
-<TouchableOpacity
-  onPress={handleCreateLabel}
-  style={{
-    backgroundColor: '#6366F1',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 16,
-    alignItems: 'center',
-  }}
->
-  <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
-    Create Label
-  </Text>
-</TouchableOpacity>
               {labels.map(label => {
                 const isAssigned = taskLabels.some(l => l.id === label.id);
                 return (
-                  <TouchableOpacity
-                    key={label.id}
-                    style={[styles.labelPickerRow, { backgroundColor: isAssigned ? label.color + '15' : theme.colors.surface, borderColor: theme.colors.border }]}
+                  <TouchableOpacity key={label.id}
+                    style={[styles.labelOption, { backgroundColor: isAssigned ? label.color + '15' : theme.colors.surface, borderColor: theme.colors.border }]}
                     onPress={() => handleToggleLabel(label.id)}
                   >
-                    <View style={[styles.labelPickerDot, { backgroundColor: label.color }]} />
+                    <View style={[styles.labelDot, { backgroundColor: label.color }]} />
                     <Text weight={isAssigned ? 'semibold' : 'regular'}>{label.name}</Text>
                     <View style={[styles.checkbox, { backgroundColor: isAssigned ? label.color : 'transparent', borderColor: isAssigned ? label.color : theme.colors.border }]}>
                       {isAssigned && <Text style={{ color: '#FFF', fontSize: 10 }}>✓</Text>}
@@ -732,13 +555,13 @@ const handlePriorityChange = useCallback((newPriority: TaskPriority) => {
                 );
               })}
               {labels.length === 0 && (
-                <Text variant="bodyMedium" color="tertiary" style={{ textAlign: 'center', padding: 24 }}>
-                  No labels created for this project
+                <Text variant="bodyMedium" color="tertiary" style={{ textAlign: 'center', padding: 24, marginTop: 20 }}>
+                  No labels in this project
                 </Text>
               )}
             </ScrollView>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -749,49 +572,48 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   header: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, borderBottomWidth: 1 },
   headerBtn: { minWidth: 44, alignItems: 'center' },
-  headerActions: { flexDirection: 'row', gap: 8 },
+  headerActions: { flexDirection: 'row', gap: 4 },
   scroll: { padding: 20, paddingBottom: 100 },
   statusBanner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, marginBottom: 16, gap: 8 },
-  statusBannerDot: { width: 10, height: 10, borderRadius: 5 },
+  bannerDot: { width: 10, height: 10, borderRadius: 5 },
   priorityBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
   taskTitle: { marginBottom: 12 },
   titleInput: { fontSize: 24, fontWeight: '700', borderBottomWidth: 2, paddingVertical: 4, marginBottom: 12 },
   description: { marginBottom: 16, lineHeight: 22 },
   descInput: { fontSize: 15, lineHeight: 22, borderBottomWidth: 2, paddingVertical: 4, marginBottom: 16, minHeight: 60, textAlignVertical: 'top' },
-  quickMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
-  quickMetaItem: { padding: 12, borderRadius: 10, borderWidth: 1, gap: 4, minWidth: 100 },
-  assigneeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  assigneeAvatar: { width: 20, height: 20, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-  assigneeAvatarText: { fontSize: 10, fontWeight: '600' },
-  chipScroll: { marginBottom: 4 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  metaCard: { flex: 1, minWidth: 100, padding: 14, borderRadius: 12, borderWidth: 1, gap: 6 },
+  metaAssignee: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaAvatar: { width: 24, height: 24, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  metaAvatarText: { fontSize: 11, fontWeight: '600' },
+  sectionTitle: { fontSize: 11, fontWeight: '600', letterSpacing: 1, marginBottom: 8, marginTop: 4 },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   chipRow: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
   chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, gap: 6 },
   chipDot: { width: 8, height: 8, borderRadius: 4 },
-  labellPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 0.5, gap: 5 },
+  labelPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 0.5, gap: 5 },
   labelDot: { width: 8, height: 8, borderRadius: 4 },
-  labelsSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   divider: { height: 1, marginVertical: 20 },
   activityRow: { flexDirection: 'row', paddingVertical: 10, gap: 10, borderBottomWidth: 0.5 },
-  activityDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+  activityDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
   activityContent: { flex: 1, gap: 2 },
-  activityHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  activityAvatar: { width: 24, height: 24, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-  activityAvatarText: { fontSize: 10, fontWeight: '600' },
-  activityTextWrap: { flex: 1 },
-  emptyComments: { paddingVertical: 32, alignItems: 'center' },
+  emptySection: { paddingVertical: 24, alignItems: 'center' },
   commentRow: { flexDirection: 'row', paddingVertical: 12, gap: 10 },
   commentAvatar: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   commentAvatarText: { fontSize: 13, fontWeight: '600' },
   commentBody: { flex: 1, gap: 4 },
   commentMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  deleteComment: { marginTop: 4 },
-  commentInputBar: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, gap: 8, borderTopWidth: 1 },
+  commentBar: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, gap: 8, borderTopWidth: 1 },
   commentInput: { flex: 1, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, maxHeight: 80 },
-  sendButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  sendBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalContent: { maxHeight: '60%', borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  modalContent: { maxHeight: '65%', borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1 },
-  labelPickerRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, borderWidth: 1, gap: 10 },
-  labelPickerDot: { width: 12, height: 12, borderRadius: 6 },
+  assigneeOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, borderWidth: 1, gap: 10, marginBottom: 4 },
+  assigneeAvatar: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  assigneeAvatarText: { fontSize: 14, fontWeight: '600' },
+  checkCircle: { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', marginLeft: 'auto' },
+  dateOption: { padding: 16, borderRadius: 12, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  labelOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, borderWidth: 1, gap: 10 },
   checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, justifyContent: 'center', alignItems: 'center', marginLeft: 'auto' },
 });

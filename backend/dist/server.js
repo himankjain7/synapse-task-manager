@@ -16,6 +16,7 @@ const project_routes_1 = __importDefault(require("./routes/project.routes"));
 const task_routes_1 = __importDefault(require("./routes/task.routes"));
 const comment_routes_1 = __importDefault(require("./routes/comment.routes"));
 const label_routes_1 = __importDefault(require("./routes/label.routes"));
+const standalone_task_routes_1 = __importDefault(require("./routes/standalone-task.routes"));
 // Import Middlewares
 const error_middleware_1 = require("./middleware/error.middleware");
 const socket_1 = require("./socket");
@@ -37,6 +38,7 @@ app.use('/api/v1/auth', auth_routes_1.default);
 app.use('/api/v1/workspaces', workspace_routes_1.default);
 app.use('/api/v1/workspaces/:workspaceId/projects', project_routes_1.default);
 app.use('/api/v1/projects/:projectId/tasks', task_routes_1.default);
+app.use('/api/v1/tasks', standalone_task_routes_1.default);
 app.use('/api/v1/tasks/:taskId/comments', comment_routes_1.default);
 app.use('/api/v1/projects/:projectId', label_routes_1.default);
 app.use('/api/v1/tasks', label_routes_1.default);

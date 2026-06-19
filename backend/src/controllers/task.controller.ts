@@ -105,6 +105,12 @@ export class TaskController {
   const userId = req.auth?.userId;
   const { projectId } = req.params;
 
+  console.log('[listTasks] projectId from params:', projectId);
+  console.log('[listTasks] req.params:', JSON.stringify(req.params));
+  console.log('[listTasks] req.path:', req.path);
+  console.log('[listTasks] req.baseUrl:', req.baseUrl);
+  console.log('[listTasks] req.originalUrl:', req.originalUrl);
+
   if (!userId) {
     throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
   }
@@ -122,6 +128,9 @@ export class TaskController {
     userId,
     filters
   );
+
+  console.log('[listTasks] result.data.length:', result.data.length);
+  console.log('[listTasks] result.data[0]?.projectId:', result.data[0]?.projectId);
 
   res.status(200).json({
     success: true,

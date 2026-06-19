@@ -13,6 +13,7 @@ import projectRouter from './routes/project.routes';
 import taskRouter from './routes/task.routes';
 import commentRouter from './routes/comment.routes';
 import labelRouter from './routes/label.routes';
+import standaloneTaskRouter from './routes/standalone-task.routes';
 
 // Import Middlewares
 import { errorHandler } from './middleware/error.middleware';
@@ -39,6 +40,7 @@ app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/workspaces', workspaceRouter);
 app.use('/api/v1/workspaces/:workspaceId/projects', projectRouter);
 app.use('/api/v1/projects/:projectId/tasks', taskRouter);
+app.use('/api/v1/tasks', standaloneTaskRouter);
 app.use('/api/v1/tasks/:taskId/comments', commentRouter);
 app.use('/api/v1/projects/:projectId', labelRouter);
 app.use('/api/v1/tasks', labelRouter);

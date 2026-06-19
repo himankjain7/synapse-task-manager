@@ -116,14 +116,14 @@ export interface TaskFilters {
 export interface Comment {
   id: string;
   taskId: string;
-  authorId: string;
+  userId: string;
   content: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CommentWithAuthor extends Comment {
-  author: {
+  user: {
     id: string;
     name: string;
     email: string;

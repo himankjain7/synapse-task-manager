@@ -70,7 +70,7 @@ class TaskService {
                 status: models_1.TaskStatus.todo,
                 priority: data.priority || models_1.TaskPriority.medium,
                 assignedTo: data.assignedTo || null,
-                dueDate: data.dueDate || null,
+                dueDate: data.dueDate ? new Date(data.dueDate) : null,
                 position,
                 createdAt: new Date(),
             },
@@ -111,7 +111,7 @@ class TaskService {
         if (!project) {
             throw new Error('Project not found');
         }
-        return {
+        const result = {
             ...task,
             labels: taskLabels,
             assignee: assignee ? {
@@ -127,6 +127,7 @@ class TaskService {
                 status: project.status,
             },
         };
+        return result;
     }
     /**
      * Get all tasks in project with filtering and pagination
@@ -223,32 +224,35 @@ class TaskService {
             throw new Error('Permission denied: not a member of this workspace');
         }
         // Verify new assignee exists (if provided)
-        if (data.assignedTo !== undefined && data.assignedTo) {
+        const assigneeId = data.assignedTo ?? data.assigneeId;
+        if (assigneeId !== undefined && assigneeId) {
             const assignee = await db_1.default.user.findUnique({
-                where: { id: data.assignedTo },
+                where: { id: assigneeId },
             });
             if (!assignee) {
                 throw new Error('Assigned user not found');
             }
         }
-        // Update task
+        // Build update data
+        const updateData = { updatedAt: new Date() };
+        if (data.title)
+            updateData.title = data.title.trim();
+        if (data.description !== undefined)
+            updateData.description = data.description?.trim() || null;
+        if (data.status)
+            updateData.status = data.status;
+        if (data.priority)
+            updateData.priority = data.priority;
+        if (assigneeId !== undefined)
+            updateData.assignedTo = assigneeId || null;
+        if (data.dueDate !== undefined)
+            updateData.dueDate = data.dueDate ? new Date(data.dueDate) : null;
         const updated = await db_1.default.task.update({
             where: { id: taskId },
-            data: {
-                ...(data.title && { title: data.title.trim() }),
-                ...(data.description !== undefined && {
-                    description: data.description?.trim() || null,
-                }),
-                ...(data.status && { status: data.status }),
-                ...(data.priority && { priority: data.priority }),
-                ...(data.assignedTo !== undefined && {
-                    assignedTo: data.assignedTo || null,
-                }),
-                ...(data.dueDate !== undefined && { dueDate: data.dueDate || null }),
-                updatedAt: new Date(),
-            },
+            data: updateData,
         });
-        return this.enrichTaskWithAssignee(updated);
+        const enriched = await this.enrichTaskWithAssignee(updated);
+        return enriched;
     }
     /**
      * Update task status

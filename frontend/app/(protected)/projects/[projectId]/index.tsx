@@ -50,7 +50,6 @@ const PRIORITY_COLORS: Record<string, string> = {
   high: '#F59E0B',
   medium: '#3B82F6',
   low: '#64748B',
-  none: 'transparent',
 };
 
 function TaskCard({
@@ -254,13 +253,7 @@ const { mutateAsync: deleteProject } = useDeleteProject();
   const handleStatusChange = useCallback(async (task: TaskWithAssignee, newStatus: TaskStatus) => {
     try {
       triggerHaptic('light');
-      await updateTask({
-  projectId,
-  id: task.id,
-  input: {
-    status: newStatus,
-  },
-});
+      await updateTask({ id: task.id, input: { status: newStatus } });
       showToast(`Moved to ${COLUMNS.find(c => c.key === newStatus)?.label}`, 'success');
     } catch {
       triggerHaptic('error');
@@ -425,7 +418,15 @@ const { mutateAsync: deleteProject } = useDeleteProject();
             );
           }}
         />
-      )} 
+      )}
+
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+        onPress={() => router.push(`/(protected)/projects/${projectId}/tasks/create`)}
+        activeOpacity={0.8}
+      >
+        <Text style={[styles.fabText, { color: theme.colors.text.onPrimary }]}>+</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -468,4 +469,20 @@ const styles = StyleSheet.create({
   assigneeDot: { width: 6, height: 6, borderRadius: 3 },
   assigneeName: { flex: 1 },
   commentCount: { flexDirection: 'row', alignItems: 'center' },
+  fab: {
+    position: 'absolute',
+    bottom: 32,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...({ shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 } as any),
+  },
+  fabText: {
+    fontSize: 28,
+    fontWeight: '300',
+    lineHeight: 30,
+  },
 });

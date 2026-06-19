@@ -87,7 +87,7 @@ export class TaskService {
         status: TaskStatus.todo,
         priority: data.priority || TaskPriority.medium,
         assignedTo: data.assignedTo || null,
-        dueDate: data.dueDate || null,
+        dueDate: data.dueDate ? new Date(data.dueDate) : null,
         position,
         createdAt: new Date(),
       },
@@ -134,10 +134,10 @@ export class TaskService {
       throw new Error('Project not found');
     }
 
-    return {
-  ...task,
-  labels: taskLabels,
-  assignee: assignee ? {
+    const result = {
+      ...task,
+      labels: taskLabels,
+      assignee: assignee ? {
     id: assignee.id,
     email: assignee.email,
     name: assignee.name,
@@ -150,6 +150,8 @@ export class TaskService {
     status: project.status as ProjectStatus,
   },
 };
+
+    return result;
 }
 
   /**
@@ -271,9 +273,10 @@ export class TaskService {
     }
 
     // Verify new assignee exists (if provided)
-    if (data.assignedTo !== undefined && data.assignedTo) {
+    const assigneeId = data.assignedTo ?? (data as any).assigneeId;
+    if (assigneeId !== undefined && assigneeId) {
       const assignee = await prisma.user.findUnique({
-        where: { id: data.assignedTo },
+        where: { id: assigneeId },
       });
 
       if (!assignee) {
@@ -281,25 +284,23 @@ export class TaskService {
       }
     }
 
-    // Update task
+    // Build update data
+    const updateData: any = { updatedAt: new Date() };
+    if (data.title) updateData.title = data.title.trim();
+    if (data.description !== undefined) updateData.description = data.description?.trim() || null;
+    if (data.status) updateData.status = data.status;
+    if (data.priority) updateData.priority = data.priority;
+    if (assigneeId !== undefined) updateData.assignedTo = assigneeId || null;
+    if (data.dueDate !== undefined) updateData.dueDate = data.dueDate ? new Date(data.dueDate) : null;
+
     const updated = await prisma.task.update({
       where: { id: taskId },
-      data: {
-        ...(data.title && { title: data.title.trim() }),
-        ...(data.description !== undefined && {
-          description: data.description?.trim() || null,
-        }),
-        ...(data.status && { status: data.status }),
-        ...(data.priority && { priority: data.priority }),
-        ...(data.assignedTo !== undefined && {
-          assignedTo: data.assignedTo || null,
-        }),
-        ...(data.dueDate !== undefined && { dueDate: data.dueDate || null }),
-        updatedAt: new Date(),
-      },
+      data: updateData,
     });
 
-    return this.enrichTaskWithAssignee(updated);
+    const enriched = await this.enrichTaskWithAssignee(updated);
+
+    return enriched;
   }
 
   /**

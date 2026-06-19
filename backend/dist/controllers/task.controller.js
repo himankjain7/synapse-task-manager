@@ -95,6 +95,11 @@ class TaskController {
     static listTasks = (0, error_middleware_1.asyncHandler)(async (req, res) => {
         const userId = req.auth?.userId;
         const { projectId } = req.params;
+        console.log('[listTasks] projectId from params:', projectId);
+        console.log('[listTasks] req.params:', JSON.stringify(req.params));
+        console.log('[listTasks] req.path:', req.path);
+        console.log('[listTasks] req.baseUrl:', req.baseUrl);
+        console.log('[listTasks] req.originalUrl:', req.originalUrl);
         if (!userId) {
             throw new error_middleware_2.APIError(401, 'UNAUTHORIZED', 'Authentication required');
         }
@@ -106,6 +111,8 @@ class TaskController {
             limit: parseInt(req.query.limit) || 20,
         };
         const result = await task_service_1.TaskService.getProjectTasks(projectId, userId, filters);
+        console.log('[listTasks] result.data.length:', result.data.length);
+        console.log('[listTasks] result.data[0]?.projectId:', result.data[0]?.projectId);
         res.status(200).json({
             success: true,
             data: result,

@@ -26,9 +26,9 @@ export const taskApi = {
     return response.data.data;
   },
 
-  get: async (projectId: string, id: string): Promise<TaskWithDetails> => {
-  const response = await api.get(
-    `/api/v1/projects/${projectId}/tasks/${id}`
+  get: async (id: string): Promise<TaskWithDetails> => {
+  const response = await api.get<ApiResponse<TaskWithDetails>>(
+    `/api/v1/tasks/${id}`
   );
 
   return response.data.data;
@@ -42,22 +42,14 @@ export const taskApi = {
     return response.data.data;
   },
 
-  update: async (
-  projectId: string,
-  id: string,
-  input: UpdateTaskInput
-): Promise<TaskWithAssignee> => {
-  const response = await api.patch<ApiResponse<TaskWithAssignee>>(
-    `/api/v1/projects/${projectId}/tasks/${id}`,
-    input
-  );
+  update: async (id: string, input: UpdateTaskInput): Promise<TaskWithAssignee> => {
+    const response = await api.patch<ApiResponse<TaskWithAssignee>>(`/api/v1/tasks/${id}`, input);
+    return response.data.data;
+  },
 
-  return response.data.data;
-},
-
-  delete: async (projectId: string, id: string): Promise<void> => {
-  await api.delete(`/api/v1/projects/${projectId}/tasks/${id}`);
-},
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/api/v1/tasks/${id}`);
+  },
 
   reorder: async (projectId: string, input: ReorderTaskInput[]): Promise<void> => {
     await api.put(`/api/v1/projects/${projectId}/tasks/reorder`, { tasks: input });
