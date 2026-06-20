@@ -44,6 +44,7 @@ export function useUpdateTask() {
       taskApi.update(id, input),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: ['task-activity', variables.id] });
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
       queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
     },
@@ -87,6 +88,7 @@ export function useCreateComment() {
       taskApi.createComment(taskId, input),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.comments(variables.taskId) });
+      queryClient.invalidateQueries({ queryKey: ['task-activity', variables.taskId] });
     },
   });
 }
@@ -98,6 +100,7 @@ export function useDeleteComment() {
       taskApi.deleteComment(taskId, commentId),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.comments(variables.taskId) });
+      queryClient.invalidateQueries({ queryKey: ['task-activity', variables.taskId] });
     },
   });
 }
@@ -137,8 +140,9 @@ export function useAssignLabel() {
   return useMutation({
     mutationFn: ({ taskId, labelId }: { taskId: string; labelId: string }) =>
       taskApi.assignLabel(taskId, labelId),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
+      queryClient.invalidateQueries({ queryKey: ['task-activity', variables.taskId] });
     },
   });
 }
@@ -148,16 +152,17 @@ export function useRemoveLabel() {
   return useMutation({
     mutationFn: ({ taskId, labelId }: { taskId: string; labelId: string }) =>
       taskApi.removeLabel(taskId, labelId),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
+      queryClient.invalidateQueries({ queryKey: ['task-activity', variables.taskId] });
     },
   });
 }
 
-export function useActivity(workspaceId: string | undefined, limit = 50) {
+export function useTaskActivity(taskId: string | undefined) {
   return useQuery({
-    queryKey: ['activity', workspaceId],
-    queryFn: () => taskApi.getActivity(workspaceId!, limit),
-    enabled: !!workspaceId,
+    queryKey: ['task-activity', taskId],
+    queryFn: () => taskApi.getTaskActivity(taskId!),
+    enabled: !!taskId,
   });
 }

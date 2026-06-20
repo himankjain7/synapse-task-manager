@@ -33,6 +33,8 @@ export function connectSocket(): Socket {
     console.log('[Socket] Connection error:', error.message);
   });
 
+
+
   return socket;
 }
 

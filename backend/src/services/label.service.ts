@@ -1,4 +1,5 @@
 import prisma from '../config/db';
+import { ActivityService } from './activity.service';
 
 export class LabelService {
   static async getProjectLabels(projectId: string) {
@@ -26,16 +27,48 @@ export class LabelService {
     await prisma.taskLabel.delete({ where: { id } });
   }
 
-  static async assignLabelToTask(taskId: string, labelId: string) {
-    return prisma.taskLabelAssignment.create({
+  static async assignLabelToTask(taskId: string, labelId: string, userId: string) {
+    const [task, label] = await Promise.all([
+      prisma.task.findUnique({ where: { id: taskId }, include: { project: true } }),
+      prisma.taskLabel.findUnique({ where: { id: labelId } }),
+    ]);
+
+    const assignment = await prisma.taskLabelAssignment.create({
       data: { taskId, labelId },
     });
+
+    if (task && label) {
+      await ActivityService.log({
+        workspaceId: task.project.workspaceId,
+        taskId,
+        userId,
+        action: 'label_added',
+        details: { label: label.name },
+      });
+    }
+
+    return assignment;
   }
 
-  static async removeLabelFromTask(taskId: string, labelId: string) {
+  static async removeLabelFromTask(taskId: string, labelId: string, userId: string) {
+    const [task, label] = await Promise.all([
+      prisma.task.findUnique({ where: { id: taskId }, include: { project: true } }),
+      prisma.taskLabel.findUnique({ where: { id: labelId } }),
+    ]);
+
     await prisma.taskLabelAssignment.deleteMany({
       where: { taskId, labelId },
     });
+
+    if (task && label) {
+      await ActivityService.log({
+        workspaceId: task.project.workspaceId,
+        taskId,
+        userId,
+        action: 'label_removed',
+        details: { label: label.name },
+      });
+    }
   }
 
   static async getTaskLabels(taskId: string) {

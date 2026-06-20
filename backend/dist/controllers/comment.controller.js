@@ -1,10 +1,23 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CommentController = void 0;
 const comment_service_1 = require("../services/comment.service");
 const task_service_1 = require("../services/task.service");
 const error_middleware_1 = require("../middleware/error.middleware");
 const error_middleware_2 = require("../middleware/error.middleware");
+const db_1 = __importDefault(require("../config/db"));
+const socket_1 = require("../socket");
+const uuid_1 = require("uuid");
+const getUserName = async (userId) => {
+    const user = await db_1.default.user.findUnique({ where: { id: userId }, select: { name: true } });
+    return user?.name || userId;
+};
+const makeNotif = (id, type, title, message, taskId, projectId, workspaceId) => ({
+    id, type, title, message, taskId, projectId, workspaceId, createdAt: new Date().toISOString(),
+});
 /**
  * Comment Controller
  *
@@ -46,6 +59,26 @@ class CommentController {
         }
         const data = req.body;
         const comment = await comment_service_1.CommentService.createComment(taskId, userId, data);
+        if (comment) {
+            const io = (0, socket_1.getIo)();
+            const actorName = await getUserName(userId);
+            const wsId = task.project?.workspaceId;
+            const payload = makeNotif((0, uuid_1.v4)(), 'comment_added', 'New Comment', `${actorName} commented on "${task.title}"`, taskId, task.projectId, wsId);
+            if (task.assignedTo) {
+                io.to(`user:${task.assignedTo}`).emit('notification', payload);
+                if (task.assignedTo !== userId) {
+                    io.to(`user:${userId}`).emit('notification', payload);
+                }
+            }
+            else {
+                io.to(`user:${userId}`).emit('notification', payload);
+            }
+            io.to(`project:${task.projectId}`).emit('comment:added', { comment });
+        }
+        if (comment) {
+            const io = (0, socket_1.getIo)();
+            io.to(`project:${task.projectId}`).emit('comment:added', { comment });
+        }
         res.status(201).json({
             success: true,
             data: comment,
@@ -163,7 +196,30 @@ class CommentController {
         if (!canEdit) {
             throw new error_middleware_2.ForbiddenError('You can only delete your own comments');
         }
+        // Fetch comment + task for notification before deletion
+        const commentData = await db_1.default.comment.findUnique({ where: { id }, select: { taskId: true, content: true } });
+        let taskInfo = null;
+        if (commentData) {
+            const t = await task_service_1.TaskService.getTaskById(commentData.taskId);
+            if (t) {
+                taskInfo = { title: t.title, projectId: t.projectId, assignedTo: t.assignedTo, project: t.project ? { workspaceId: t.project.workspaceId } : null };
+            }
+        }
         await comment_service_1.CommentService.deleteComment(id, userId);
+        if (taskInfo) {
+            const io = (0, socket_1.getIo)();
+            const actorName = await getUserName(userId);
+            const payload = makeNotif((0, uuid_1.v4)(), 'comment_deleted', 'Comment Deleted', `${actorName} deleted a comment on "${taskInfo.title}"`, commentData?.taskId, taskInfo.projectId, taskInfo.project?.workspaceId);
+            if (taskInfo.assignedTo) {
+                io.to(`user:${taskInfo.assignedTo}`).emit('notification', payload);
+                if (taskInfo.assignedTo !== userId) {
+                    io.to(`user:${userId}`).emit('notification', payload);
+                }
+            }
+            else {
+                io.to(`user:${userId}`).emit('notification', payload);
+            }
+        }
         res.status(204).send();
     });
     /**

@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 let io: Server | null = null;
 
 interface SocketUser {
-  id: string;
+  userId: string;
   email: string;
 }
 
@@ -36,9 +36,9 @@ export const initSocketServer = (httpServer: HttpServer): Server => {
       // Clean token string if "Bearer <token>" formatting is used
       const cleanToken = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
       const jwtSecret = process.env.JWT_SECRET || 'dev_secret_only_for_local_debugging_replace_in_production';
-      const decoded = jwt.verify(cleanToken, jwtSecret) as SocketUser;
+      const decoded = jwt.verify(cleanToken, jwtSecret) as any;
       
-      socket.user = decoded;
+      socket.user = { userId: decoded.userId ?? decoded.id ?? decoded.sub, email: decoded.email };
       return next();
     } catch (err) {
       return next(new Error('Authentication error: Invalid token'));
@@ -47,7 +47,12 @@ export const initSocketServer = (httpServer: HttpServer): Server => {
 
   // Client lifecycle events
   io.on('connection', (socket: AuthenticatedSocket) => {
-    console.log(`[Socket Connected]: User ${socket.user?.email} (ID: ${socket.user?.id})`);
+    const userId = socket.user?.userId;
+    console.log(`[Socket Connected]: User ${socket.user?.email} (ID: ${userId})`);
+
+    if (userId) {
+      socket.join(`user:${userId}`);
+    }
 
     // Channel membership: Join a project room
     socket.on('join:project', (payload: { projectId: string }) => {
@@ -83,6 +88,9 @@ export const initSocketServer = (httpServer: HttpServer): Server => {
     });
 
     socket.on('disconnect', () => {
+      if (userId) {
+        socket.leave(`user:${userId}`);
+      }
       console.log(`[Socket Disconnected]: Socket ID ${socket.id}`);
     });
   });
@@ -106,5 +114,17 @@ export const getIo = (): Server => {
 export const broadcastToProject = (projectId: string, event: string, payload: any) => {
   if (io) {
     io.to(`project:${projectId}`).emit(event, payload);
+  }
+};
+
+/**
+ * Send a notification to a specific user's room
+ */
+export const sendNotification = (
+  userId: string,
+  notification: { id: string; type: string; title: string; body: string; data?: Record<string, string>; read: boolean; createdAt: string }
+) => {
+  if (io) {
+    io.to(`user:${userId}`).emit('notification', notification);
   }
 };

@@ -245,7 +245,7 @@ router.post('/tasks/:taskId/assign', authenticateToken, async (req: Request, res
       return;
     }
 
-    const assignment = await TaskService.assignTask(taskId, assigneeId);
+    const assignment = await TaskService.assignTask(taskId, userId, assigneeId);
     const task = await TaskService.getTaskById(taskId);
 
     if (task) {

@@ -2,14 +2,14 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type NotificationType = 'task_assigned' | 'comment_mention' | 'due_soon' | 'workspace_invite';
-
 export interface AppNotification {
   id: string;
-  type: NotificationType;
+  type: string;
   title: string;
-  body: string;
-  data?: Record<string, string>;
+  message: string;
+  taskId?: string;
+  projectId?: string;
+  workspaceId?: string;
   read: boolean;
   createdAt: string;
 }

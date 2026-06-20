@@ -110,8 +110,8 @@ export const taskApi = {
     await api.delete(`/api/v1/tasks/${taskId}/labels/${labelId}`);
   },
 
-  getActivity: async (workspaceId: string, limit = 50): Promise<ActivityLogItem[]> => {
-    const response = await api.get<ApiResponse<ActivityLogItem[]>>(`/api/v1/workspaces/${workspaceId}/activity`, { params: { limit } });
+  getTaskActivity: async (taskId: string): Promise<ActivityLogItem[]> => {
+    const response = await api.get<ApiResponse<ActivityLogItem[]>>(`/api/v1/tasks/${taskId}/activity`);
     return response.data.data;
   },
 };

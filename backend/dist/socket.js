@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.broadcastToProject = exports.getIo = exports.initSocketServer = void 0;
+exports.sendNotification = exports.broadcastToProject = exports.getIo = exports.initSocketServer = void 0;
 const socket_io_1 = require("socket.io");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 let io = null;
@@ -28,7 +28,7 @@ const initSocketServer = (httpServer) => {
             const cleanToken = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
             const jwtSecret = process.env.JWT_SECRET || 'dev_secret_only_for_local_debugging_replace_in_production';
             const decoded = jsonwebtoken_1.default.verify(cleanToken, jwtSecret);
-            socket.user = decoded;
+            socket.user = { userId: decoded.userId ?? decoded.id ?? decoded.sub, email: decoded.email };
             return next();
         }
         catch (err) {
@@ -37,7 +37,11 @@ const initSocketServer = (httpServer) => {
     });
     // Client lifecycle events
     io.on('connection', (socket) => {
-        console.log(`[Socket Connected]: User ${socket.user?.email} (ID: ${socket.user?.id})`);
+        const userId = socket.user?.userId;
+        console.log(`[Socket Connected]: User ${socket.user?.email} (ID: ${userId})`);
+        if (userId) {
+            socket.join(`user:${userId}`);
+        }
         // Channel membership: Join a project room
         socket.on('join:project', (payload) => {
             if (payload.projectId) {
@@ -68,6 +72,9 @@ const initSocketServer = (httpServer) => {
             });
         });
         socket.on('disconnect', () => {
+            if (userId) {
+                socket.leave(`user:${userId}`);
+            }
             console.log(`[Socket Disconnected]: Socket ID ${socket.id}`);
         });
     });
@@ -93,3 +100,12 @@ const broadcastToProject = (projectId, event, payload) => {
     }
 };
 exports.broadcastToProject = broadcastToProject;
+/**
+ * Send a notification to a specific user's room
+ */
+const sendNotification = (userId, notification) => {
+    if (io) {
+        io.to(`user:${userId}`).emit('notification', notification);
+    }
+};
+exports.sendNotification = sendNotification;

@@ -334,10 +334,9 @@ export interface Notification {
 export interface ActivityLog {
   id: string;
   workspaceId: string;
+  taskId: string | null;
   userId: string;
-  action: ActivityLogAction;
-  entityType: ActivityLogEntityType;
-  entityId: string | null;
+  action: string;
   details: Record<string, unknown>;
   createdAt: Date;
 }

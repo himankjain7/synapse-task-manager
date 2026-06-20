@@ -14,5 +14,6 @@ router.use(requireAuth);
 router.get('/:id', validateUUID('id'), TaskController.getTask);
 router.patch('/:id', validateUUID('id'), validateBody, sanitizeFields(['title', 'description']), TaskController.updateTask);
 router.delete('/:id', validateUUID('id'), TaskController.deleteTask);
+router.get('/:taskId/activity', validateUUID('taskId'), TaskController.getTaskActivity);
 
 export default router;

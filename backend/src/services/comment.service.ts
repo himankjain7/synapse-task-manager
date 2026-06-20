@@ -1,5 +1,6 @@
 import prisma from '../config/db';
 import { ProjectService } from './project.service';
+import { ActivityService } from './activity.service';
 import {
   CommentWithUser,
   CreateCommentRequest,
@@ -71,6 +72,21 @@ export class CommentService {
         createdAt: new Date(),
       },
     });
+
+    // Log activity
+    const project = await prisma.project.findUnique({
+      where: { id: task.projectId },
+    });
+
+    if (project) {
+      await ActivityService.log({
+        workspaceId: project.workspaceId,
+        taskId,
+        userId,
+        action: 'comment_created',
+        details: { content: data.content.trim().substring(0, 200) },
+      });
+    }
 
     return {
       ...comment,
@@ -284,6 +300,22 @@ export class CommentService {
     // Only author can delete
     if (comment.userId !== userId) {
       throw new Error('Permission denied: only comment author can delete');
+    }
+
+    // Log activity before deletion
+    const task = await prisma.task.findUnique({
+      where: { id: comment.taskId },
+      include: { project: true },
+    });
+
+    if (task) {
+      await ActivityService.log({
+        workspaceId: task.project.workspaceId,
+        taskId: comment.taskId,
+        userId,
+        action: 'comment_deleted',
+        details: { commentId: comment.id, content: comment.content.substring(0, 200) },
+      });
     }
 
     // Delete comment

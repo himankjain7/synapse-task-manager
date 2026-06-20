@@ -4,6 +4,18 @@ import { TaskService } from '../services/task.service';
 import { asyncHandler } from '../middleware/error.middleware';
 import { APIError, ForbiddenError, NotFoundError } from '../middleware/error.middleware';
 import { CreateCommentRequest, UpdateCommentRequest } from '../models';
+import prisma from '../config/db';
+import { getIo } from '../socket';
+import { v4 as uuidv4 } from 'uuid';
+
+const getUserName = async (userId: string): Promise<string> => {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  return user?.name || userId;
+};
+
+const makeNotif = (id: string, type: string, title: string, message: string, taskId?: string, projectId?: string, workspaceId?: string) => ({
+  id, type, title, message, taskId, projectId, workspaceId, createdAt: new Date().toISOString(),
+});
 
 /**
  * Comment Controller
@@ -49,6 +61,29 @@ export class CommentController {
 
     const data: CreateCommentRequest = req.body;
     const comment = await CommentService.createComment(taskId, userId, data);
+
+    if (comment) {
+      const io = getIo();
+      const actorName = await getUserName(userId);
+      const wsId = task.project?.workspaceId;
+
+      const payload = makeNotif(uuidv4(), 'comment_added', 'New Comment',
+        `${actorName} commented on "${task.title}"`,
+        taskId, task.projectId, wsId);
+      if (task.assignedTo) {
+        io.to(`user:${task.assignedTo}`).emit('notification', payload);
+        if (task.assignedTo !== userId) {
+          io.to(`user:${userId}`).emit('notification', payload);
+        }
+      } else {
+        io.to(`user:${userId}`).emit('notification', payload);
+      }
+      io.to(`project:${task.projectId}`).emit('comment:added', { comment });
+    }
+    if (comment) {
+      const io = getIo();
+      io.to(`project:${task.projectId}`).emit('comment:added', { comment });
+    }
 
     res.status(201).json({
       success: true,
@@ -191,7 +226,33 @@ const result = await CommentService.getTaskComments(
       throw new ForbiddenError('You can only delete your own comments');
     }
 
+    // Fetch comment + task for notification before deletion
+    const commentData = await prisma.comment.findUnique({ where: { id }, select: { taskId: true, content: true } });
+    let taskInfo: { title: string; projectId: string; assignedTo: string | null; project: { workspaceId: string } | null } | null = null;
+    if (commentData) {
+      const t = await TaskService.getTaskById(commentData.taskId);
+      if (t) {
+        taskInfo = { title: t.title, projectId: t.projectId, assignedTo: t.assignedTo, project: t.project ? { workspaceId: t.project.workspaceId } : null };
+      }
+    }
+
     await CommentService.deleteComment(id, userId);
+
+    if (taskInfo) {
+      const io = getIo();
+      const actorName = await getUserName(userId);
+      const payload = makeNotif(uuidv4(), 'comment_deleted', 'Comment Deleted',
+        `${actorName} deleted a comment on "${taskInfo.title}"`,
+        commentData?.taskId, taskInfo.projectId, taskInfo.project?.workspaceId);
+      if (taskInfo.assignedTo) {
+        io.to(`user:${taskInfo.assignedTo}`).emit('notification', payload);
+        if (taskInfo.assignedTo !== userId) {
+          io.to(`user:${userId}`).emit('notification', payload);
+        }
+      } else {
+        io.to(`user:${userId}`).emit('notification', payload);
+      }
+    }
 
     res.status(204).send();
   });

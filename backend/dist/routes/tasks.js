@@ -219,7 +219,7 @@ router.post('/tasks/:taskId/assign', auth_1.authenticateToken, async (req, res) 
             res.status(401).json({ data: null, error: { code: 'UNAUTHORIZED', message: 'Authentication required' }, status: 'error' });
             return;
         }
-        const assignment = await task_service_1.TaskService.assignTask(taskId, assigneeId);
+        const assignment = await task_service_1.TaskService.assignTask(taskId, userId, assigneeId);
         const task = await task_service_1.TaskService.getTaskById(taskId);
         if (task) {
             (0, socket_1.broadcastToProject)(task.projectId, 'task:assigned', { taskId, assigneeId });

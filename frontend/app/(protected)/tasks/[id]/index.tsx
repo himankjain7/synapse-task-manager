@@ -14,8 +14,9 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useTheme } from '../../../../hooks/useTheme';
-import { useTask, useUpdateTask, useDeleteTask, useTaskComments, useCreateComment, useDeleteComment, useLabels, useAssignLabel, useRemoveLabel } from '../../../../hooks/useTasks';
+import { useTask, useUpdateTask, useDeleteTask, useTaskComments, useCreateComment, useDeleteComment, useLabels, useCreateLabel, useAssignLabel, useRemoveLabel, useTaskActivity } from '../../../../hooks/useTasks';
 import { useMembers } from '../../../../hooks/useWorkspaces';
 import { useToastStore } from '../../../../store/toastStore';
 import { Text } from '../../../../components/typography/Text';
@@ -43,20 +44,33 @@ const PRIORITIES: { key: TaskPriority; label: string; color: string }[] = [
   { key: 'urgent', label: 'Urgent', color: '#DC2626' },
 ];
 
+function fmt(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  return v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function fmtDate(d: unknown): string {
+  if (typeof d !== 'string') return '';
+  const parts = d.split('-');
+  if (parts.length !== 3) return d;
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const month = months[parseInt(parts[1], 10) - 1] || parts[1];
+  return `${parseInt(parts[2], 10)} ${month} ${parts[0]}`;
+}
+
 function formatActivity(action: string, details: Record<string, unknown>, userName: string): string {
   const actions: Record<string, string> = {
     task_created: `${userName} created this task`,
-    task_deleted: `${userName} deleted this task`,
-    task_updated: `${userName} updated this task`,
-    task_status_changed: `${userName} changed status from ${details.from || '?'} to ${details.to || '?'}`,
-    task_priority_changed: `${userName} changed priority to ${details.to || '?'}`,
-    task_description_updated: `${userName} updated the description`,
-    task_assigned: details.to ? `${userName} assigned task to ${details.to}` : `${userName} removed assignee`,
+    title_changed: `${userName} changed title from "${details.from}" to "${details.to}"`,
+    description_changed: `${userName} updated the description`,
+    status_changed: `${userName} changed status from ${fmt(details.from)} to ${fmt(details.to)}`,
+    priority_changed: `${userName} changed priority from ${fmt(details.from)} to ${fmt(details.to)}`,
+    assignee_changed: details.to ? `${userName} assigned task to ${details.to}` : `${userName} removed assignee`,
+    due_date_changed: details.to ? `${userName} set due date to ${fmtDate(details.to)}` : `${userName} removed due date`,
     label_added: `${userName} added label ${details.label || ''}`,
     label_removed: `${userName} removed label ${details.label || ''}`,
-    comment_added: `${userName} added a comment`,
-    comment_deleted: `${userName} deleted a comment`,
-    due_date_changed: details.to ? `${userName} set due date to ${details.to}` : `${userName} removed due date`,
+    comment_created: `${userName} added a comment`,
+    comment_deleted: details.content ? `${userName} deleted comment: ${details.content}` : `${userName} deleted a comment`,
   };
   return actions[action] || `${userName} ${action.replace(/_/g, ' ')}`;
 }
@@ -72,6 +86,7 @@ export default function TaskDetailScreen() {
   const { data: task, isLoading, isError, refetch } =
   useTask(id);
   const { data: commentsData, refetch: refetchComments } = useTaskComments(id);
+  const { data: activityData } = useTaskActivity(id);
   const { mutateAsync: updateTask, isPending: updating } = useUpdateTask();
   const { mutateAsync: deleteTask } = useDeleteTask();
   const { mutateAsync: addComment } = useCreateComment();
@@ -80,9 +95,11 @@ export default function TaskDetailScreen() {
   const workspaceId = task ? (task as any).workspaceId || (task as any).project?.workspaceId : undefined;
   const projectId = task?.projectId;
   const { data: membersData } = useMembers(workspaceId);
-  const { data: labelsData } = useLabels(projectId);
+  const { data: labelsData, refetch: refetchLabels } = useLabels(projectId);
   const { mutateAsync: assignLabel } = useAssignLabel();
   const { mutateAsync: removeLabel } = useRemoveLabel();
+  const { mutateAsync: createLabel } = useCreateLabel();
+  const [newLabelName, setNewLabelName] = useState('');
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
@@ -92,6 +109,8 @@ export default function TaskDetailScreen() {
   const [showLabelPicker, setShowLabelPicker] = useState(false);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
+  const [customPickerDate, setCustomPickerDate] = useState(new Date());
 
   const comments = commentsData?.data ?? [];
   const labels = labelsData ?? [];
@@ -112,12 +131,24 @@ export default function TaskDetailScreen() {
     catch { triggerHaptic('error'); showToast('Failed to update', 'error'); }
   }, [titleDraft, task, id, updateTask, showToast]);
 
+  const handleCancelTitle = useCallback(() => {
+    Keyboard.dismiss();
+    setTitleDraft(task?.title || '');
+    setEditingTitle(false);
+  }, [task]);
+
   const handleSaveDescription = useCallback(async () => {
     if (descriptionDraft === (task?.description || '')) { setEditingDescription(false); return; }
     Keyboard.dismiss();
     try { await updateTask({ id: id!, input: { description: descriptionDraft || null } as any }); triggerHaptic('light'); showToast('Description updated', 'success'); setEditingDescription(false); }
     catch { triggerHaptic('error'); showToast('Failed to update', 'error'); }
   }, [descriptionDraft, task, id, updateTask, showToast]);
+
+  const handleCancelDescription = useCallback(() => {
+    Keyboard.dismiss();
+    setDescriptionDraft(task?.description || '');
+    setEditingDescription(false);
+  }, [task]);
 
   const handleStatusChange = useCallback((newStatus: TaskStatus) => {
     triggerHaptic('light');
@@ -179,6 +210,16 @@ export default function TaskDetailScreen() {
     } catch { triggerHaptic('error'); showToast('Failed to update labels', 'error'); }
   }, [id, taskLabels, assignLabel, removeLabel, refetch, showToast]);
 
+  const handleCreateLabel = useCallback(async () => {
+    if (!newLabelName.trim() || !projectId) return;
+    try {
+      await createLabel({ projectId, input: { name: newLabelName.trim(), color: '#6366F1' } });
+      triggerHaptic('light');
+      setNewLabelName('');
+      refetchLabels();
+    } catch { triggerHaptic('error'); showToast('Failed to create label', 'error'); }
+  }, [newLabelName, projectId, createLabel, refetchLabels, showToast]);
+
   if (isLoading) {
     return <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <LoadingView fullScreen message="Loading task..." />
@@ -228,10 +269,22 @@ export default function TaskDetailScreen() {
 
           {/* Title */}
           {editingTitle ? (
-            <TextInput style={[styles.titleInput, { color: theme.colors.text.primary, borderColor: theme.colors.primary }]}
-              value={titleDraft} onChangeText={setTitleDraft} onBlur={handleSaveTitle} onSubmitEditing={handleSaveTitle}
-              autoFocus maxLength={200} returnKeyType="done"
-            />
+            <View>
+              <TextInput style={[styles.titleInput, { color: theme.colors.text.primary, borderColor: theme.colors.primary }]}
+                value={titleDraft} onChangeText={setTitleDraft} onBlur={handleSaveTitle} onSubmitEditing={handleSaveTitle}
+                autoFocus maxLength={200} returnKeyType="done"
+              />
+              <View style={styles.editActions}>
+                <TouchableOpacity onPress={handleCancelTitle}
+                  style={[styles.editBtnCancel, { borderColor: theme.colors.border }]}>
+                  <Text color="secondary" weight="semibold">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSaveTitle}
+                  style={[styles.editBtnSave, { backgroundColor: theme.colors.primary }]}>
+                  <Text style={{ color: '#FFF', fontWeight: '600' }}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           ) : (
             <TouchableOpacity onLongPress={() => { setEditingTitle(true); triggerHaptic('light'); }}>
               <Heading level={1} style={styles.taskTitle}>{task.title}</Heading>
@@ -240,10 +293,22 @@ export default function TaskDetailScreen() {
 
           {/* Description */}
           {editingDescription ? (
-            <TextInput style={[styles.descInput, { color: theme.colors.text.secondary, borderColor: theme.colors.primary }]}
-              value={descriptionDraft} onChangeText={setDescriptionDraft} onBlur={handleSaveDescription}
-              multiline autoFocus maxLength={2000}
-            />
+            <View>
+              <TextInput style={[styles.descInput, { color: theme.colors.text.secondary, borderColor: theme.colors.primary }]}
+                value={descriptionDraft} onChangeText={setDescriptionDraft}
+                multiline autoFocus maxLength={2000}
+              />
+              <View style={styles.editActions}>
+                <TouchableOpacity onPress={handleCancelDescription}
+                  style={[styles.editBtnCancel, { borderColor: theme.colors.border }]}>
+                  <Text color="secondary" weight="semibold">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSaveDescription}
+                  style={[styles.editBtnSave, { backgroundColor: theme.colors.primary }]}>
+                  <Text style={{ color: '#FFF', fontWeight: '600' }}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           ) : (
             <TouchableOpacity onLongPress={() => { setEditingDescription(true); triggerHaptic('light'); }}>
               {task.description ? (
@@ -266,7 +331,7 @@ export default function TaskDetailScreen() {
                   <View style={[styles.metaAvatar, { backgroundColor: theme.colors.primaryLight }]}>
                     <Text style={[styles.metaAvatarText, { color: theme.colors.primary }]}>{getInitials(task.assignee.name)}</Text>
                   </View>
-                  <Text variant="bodySmall" weight="semibold" numberOfLines={1}>{task.assignee.name}</Text>
+                  <Text variant="bodySmall" weight="semibold" numberOfLines={1} ellipsizeMode="tail" style={{ flexShrink: 1 }}>{task.assignee.name}</Text>
                 </View>
               ) : (
                 <Text variant="bodySmall" color="tertiary">Unassigned</Text>
@@ -292,30 +357,15 @@ export default function TaskDetailScreen() {
             <TouchableOpacity style={[styles.metaCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
               <Text variant="caption" color="tertiary">Created by</Text>
               <View style={styles.metaAssignee}>
-  <View
-    style={[
-      styles.metaAvatar,
-      { backgroundColor: theme.colors.primaryLight },
-    ]}
-  >
-    <Text
-      style={[
-        styles.metaAvatarText,
-        { color: theme.colors.primary },
-      ]}
-    >
-      {getInitials(task.createdBy?.name ?? 'Unknown')}
-    </Text>
-  </View>
-
-  <Text
-    variant="bodySmall"
-    weight="semibold"
-    numberOfLines={1}
-  >
-    {task.createdBy?.name ?? 'Unknown User'}
-  </Text>
-</View>
+                <View style={[styles.metaAvatar, { backgroundColor: theme.colors.primaryLight }]}>
+                  <Text style={[styles.metaAvatarText, { color: theme.colors.primary }]}>
+                    {getInitials(task.createdBy?.name ?? user?.name ?? 'Unknown')}
+                  </Text>
+                </View>
+                <Text variant="bodySmall" weight="semibold" numberOfLines={1} ellipsizeMode="tail" style={{ flexShrink: 1 }}>
+                  {task.createdBy?.name ?? user?.name ?? 'Unknown User'}
+                </Text>
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -372,13 +422,13 @@ export default function TaskDetailScreen() {
 
           {/* Activity Timeline */}
           <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary, marginTop: 20 }]}>ACTIVITY</Text>
-          {[task, ...(task as any)._activity || []].length > 0 ? (
-            (task as any)._activity?.filter(Boolean).map((log: any) => (
+          {activityData && activityData.length > 0 ? (
+            activityData.map((log) => (
               <View key={log.id} style={[styles.activityRow, { borderBottomColor: theme.colors.border }]}>
-                <View style={[styles.activityDot, { backgroundColor: log.action?.includes('comment') ? theme.colors.success : theme.colors.primary }]} />
+                <View style={[styles.activityDot, { backgroundColor: log.action === 'comment_created' ? theme.colors.success : theme.colors.primary }]} />
                 <View style={styles.activityContent}>
                   <Text variant="bodySmall">
-                    {formatActivity(log.action || 'task_updated', log.details || {}, log.user?.name || 'Someone')}
+                    {formatActivity(log.action, log.details || {}, log.user?.name || 'Someone')}
                   </Text>
                   <Text variant="caption" color="tertiary">{formatRelativeTime(log.createdAt)}</Text>
                 </View>
@@ -514,11 +564,8 @@ export default function TaskDetailScreen() {
               })}
               <TouchableOpacity style={[styles.dateOption, { borderColor: theme.colors.primary, borderStyle: 'dashed' }]}
                 onPress={() => {
-                  setShowDatePicker(false);
-                  Alert.prompt?.('Custom Date', 'Enter date (YYYY-MM-DD):', [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Set', onPress: (val?: string) => { if (val) handleDueDateChange(val); } },
-                  ]);
+                  setCustomPickerDate(task.dueDate ? new Date(task.dueDate) : new Date());
+                  setShowCustomDatePicker(true);
                 }}
               >
                 <Text color="primary">Custom Date...</Text>
@@ -539,6 +586,24 @@ export default function TaskDetailScreen() {
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
+              <View style={[styles.createLabelRow, { borderBottomColor: theme.colors.border }]}>
+                <TextInput
+                  style={[styles.createLabelInput, { color: theme.colors.text.primary, borderColor: theme.colors.border }]}
+                  placeholder="New label name..."
+                  placeholderTextColor={theme.colors.text.tertiary}
+                  value={newLabelName}
+                  onChangeText={setNewLabelName}
+                  onSubmitEditing={handleCreateLabel}
+                  maxLength={30}
+                />
+                <TouchableOpacity
+                  style={[styles.createLabelBtn, { backgroundColor: theme.colors.primary }]}
+                  onPress={handleCreateLabel}
+                  disabled={!newLabelName.trim()}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>Add</Text>
+                </TouchableOpacity>
+              </View>
               {labels.map(label => {
                 const isAssigned = taskLabels.some(l => l.id === label.id);
                 return (
@@ -563,6 +628,21 @@ export default function TaskDetailScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {showCustomDatePicker && (
+        <DateTimePicker
+          value={customPickerDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'compact' : 'default'}
+          onChange={(_event: DateTimePickerEvent, selectedDate?: Date) => {
+            setShowCustomDatePicker(false);
+            if (_event.type === 'set' && selectedDate) {
+              const dateStr = selectedDate.toISOString().split('T')[0];
+              handleDueDateChange(dateStr);
+            }
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -583,7 +663,7 @@ const styles = StyleSheet.create({
   descInput: { fontSize: 15, lineHeight: 22, borderBottomWidth: 2, paddingVertical: 4, marginBottom: 16, minHeight: 60, textAlignVertical: 'top' },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
   metaCard: { flex: 1, minWidth: 100, padding: 14, borderRadius: 12, borderWidth: 1, gap: 6 },
-  metaAssignee: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaAssignee: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0, overflow: 'hidden' },
   metaAvatar: { width: 24, height: 24, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   metaAvatarText: { fontSize: 11, fontWeight: '600' },
   sectionTitle: { fontSize: 11, fontWeight: '600', letterSpacing: 1, marginBottom: 8, marginTop: 4 },
@@ -616,4 +696,10 @@ const styles = StyleSheet.create({
   dateOption: { padding: 16, borderRadius: 12, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   labelOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, borderWidth: 1, gap: 10 },
   checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, justifyContent: 'center', alignItems: 'center', marginLeft: 'auto' },
+  createLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 12, borderBottomWidth: 1, marginBottom: 4 },
+  createLabelInput: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14 },
+  createLabelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginBottom: 12 },
+  editBtnCancel: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
+  editBtnSave: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
 });

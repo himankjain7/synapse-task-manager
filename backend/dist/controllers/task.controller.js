@@ -1,10 +1,17 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TaskController = void 0;
 const task_service_1 = require("../services/task.service");
 const project_service_1 = require("../services/project.service");
+const activity_service_1 = require("../services/activity.service");
 const error_middleware_1 = require("../middleware/error.middleware");
 const error_middleware_2 = require("../middleware/error.middleware");
+const db_1 = __importDefault(require("../config/db"));
+const socket_1 = require("../socket");
+const uuid_1 = require("uuid");
 /**
  * Task Controller
  *
@@ -17,6 +24,13 @@ const error_middleware_2 = require("../middleware/error.middleware");
  *
  * All operations require workspace membership.
  */
+const getUserName = async (userId) => {
+    const user = await db_1.default.user.findUnique({ where: { id: userId }, select: { name: true } });
+    return user?.name || userId;
+};
+const makeNotif = (id, type, title, message, taskId, projectId, workspaceId) => ({
+    id, type, title, message, taskId, projectId, workspaceId, createdAt: new Date().toISOString(),
+});
 class TaskController {
     /**
      * POST /projects/:projectId/tasks
@@ -48,6 +62,18 @@ class TaskController {
         }
         const data = req.body;
         const task = await task_service_1.TaskService.createTask(projectId, userId, data);
+        if (task) {
+            const io = (0, socket_1.getIo)();
+            const actorName = await getUserName(userId);
+            const project = await db_1.default.project.findUnique({ where: { id: projectId }, select: { workspaceId: true } });
+            const wsId = project?.workspaceId;
+            const targetUser = data.assignedTo || userId;
+            const assigneeName = data.assignedTo ? await getUserName(data.assignedTo) : actorName;
+            const payload = makeNotif((0, uuid_1.v4)(), 'task_assigned', 'Task Assigned', `${actorName} assigned task "${task.title}" to ${assigneeName}`, task.id, projectId, wsId);
+            io.to(`user:${targetUser}`).emit('notification', payload);
+            // Broadcast to project room
+            io.to(`project:${projectId}`).emit('task:created', { task });
+        }
         res.status(201).json({
             success: true,
             data: task,
@@ -95,11 +121,6 @@ class TaskController {
     static listTasks = (0, error_middleware_1.asyncHandler)(async (req, res) => {
         const userId = req.auth?.userId;
         const { projectId } = req.params;
-        console.log('[listTasks] projectId from params:', projectId);
-        console.log('[listTasks] req.params:', JSON.stringify(req.params));
-        console.log('[listTasks] req.path:', req.path);
-        console.log('[listTasks] req.baseUrl:', req.baseUrl);
-        console.log('[listTasks] req.originalUrl:', req.originalUrl);
         if (!userId) {
             throw new error_middleware_2.APIError(401, 'UNAUTHORIZED', 'Authentication required');
         }
@@ -111,8 +132,6 @@ class TaskController {
             limit: parseInt(req.query.limit) || 20,
         };
         const result = await task_service_1.TaskService.getProjectTasks(projectId, userId, filters);
-        console.log('[listTasks] result.data.length:', result.data.length);
-        console.log('[listTasks] result.data[0]?.projectId:', result.data[0]?.projectId);
         res.status(200).json({
             success: true,
             data: result,
@@ -142,7 +161,28 @@ class TaskController {
             throw new error_middleware_2.APIError(401, 'UNAUTHORIZED', 'Authentication required');
         }
         const data = req.body;
+        const oldTask = await task_service_1.TaskService.getTaskById(id);
         const task = await task_service_1.TaskService.updateTask(id, userId, data);
+        if (task) {
+            const io = (0, socket_1.getIo)();
+            const actorName = await getUserName(userId);
+            const wsId = oldTask?.project?.workspaceId;
+            const targetUser = task.assignedTo || userId;
+            if (data.status && oldTask && oldTask.status !== data.status) {
+                io.to(`user:${targetUser}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'status_changed', 'Status Changed', `${actorName} moved "${task.title}" from ${oldTask.status.replace(/_/g, ' ')} to ${data.status.replace(/_/g, ' ')}`, task.id, task.projectId, wsId));
+            }
+            else if (data.priority && oldTask && oldTask.priority !== data.priority) {
+                io.to(`user:${targetUser}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'priority_changed', 'Priority Changed', `${actorName} changed priority of "${task.title}" to ${data.priority}`, task.id, task.projectId, wsId));
+            }
+            else if (data.dueDate && oldTask && oldTask.dueDate !== data.dueDate) {
+                io.to(`user:${targetUser}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'due_date_changed', 'Due Date Changed', `${actorName} changed due date of "${task.title}"`, task.id, task.projectId, wsId));
+            }
+            else {
+                io.to(`user:${targetUser}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'task_updated', 'Task Updated', `${actorName} updated "${task.title}"`, task.id, task.projectId, wsId));
+            }
+            // Broadcast task:updated to project room
+            io.to(`project:${task.projectId}`).emit('task:updated', { task });
+        }
         res.status(200).json({
             success: true,
             data: task,
@@ -169,7 +209,17 @@ class TaskController {
         if (!userId) {
             throw new error_middleware_2.APIError(401, 'UNAUTHORIZED', 'Authentication required');
         }
-        const task = await task_service_1.TaskService.updateTaskStatus(id, status);
+        const task = await task_service_1.TaskService.updateTaskStatus(id, userId, status);
+        if (task) {
+            const io = (0, socket_1.getIo)();
+            const project = await db_1.default.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
+            const wsId = project?.workspaceId;
+            const targetUser = task.assignedTo || userId;
+            const actorName = await getUserName(userId);
+            const payload = makeNotif((0, uuid_1.v4)(), 'status_changed', 'Status Changed', `${actorName} moved "${task.title}" to ${status.replace(/_/g, ' ')}`, task.id, task.projectId, wsId);
+            io.to(`user:${targetUser}`).emit('notification', payload);
+            io.to(`project:${task.projectId}`).emit('task:updated', { task });
+        }
         res.status(200).json({
             success: true,
             data: task,
@@ -196,7 +246,21 @@ class TaskController {
         if (!userId) {
             throw new error_middleware_2.APIError(401, 'UNAUTHORIZED', 'Authentication required');
         }
-        const task = await task_service_1.TaskService.assignTask(id, assignedTo || null);
+        const task = await task_service_1.TaskService.assignTask(id, userId, assignedTo || null);
+        if (task && assignedTo) {
+            const io = (0, socket_1.getIo)();
+            const actorName = await getUserName(userId);
+            const assigneeName = await getUserName(assignedTo);
+            const project = await db_1.default.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
+            const wsId = project?.workspaceId;
+            // Notify the newly assigned user
+            io.to(`user:${assignedTo}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'task_assigned', 'Task Assigned', `${actorName} assigned task "${task.title}" to ${assigneeName}`, task.id, task.projectId, wsId));
+            // Also notify the actor if they're not the assignee
+            if (assignedTo !== userId) {
+                io.to(`user:${userId}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'task_assigned', 'Task Assigned', `${actorName} assigned task "${task.title}" to ${assigneeName}`, task.id, task.projectId, wsId));
+            }
+            io.to(`project:${task.projectId}`).emit('task:assigned', { taskId: task.id, assigneeId: assignedTo });
+        }
         res.status(200).json({
             success: true,
             data: task,
@@ -324,6 +388,26 @@ class TaskController {
         res.status(200).json({
             success: true,
             data: tasks,
+            timestamp: new Date(),
+        });
+    });
+    /**
+     * GET /tasks/:taskId/activity
+     * Get activity log for a task
+     *
+     * Response: 200 OK
+     * Array of activity log entries (newest first)
+     */
+    static getTaskActivity = (0, error_middleware_1.asyncHandler)(async (req, res) => {
+        const userId = req.auth?.userId;
+        const { taskId } = req.params;
+        if (!userId) {
+            throw new error_middleware_2.APIError(401, 'UNAUTHORIZED', 'Authentication required');
+        }
+        const activity = await activity_service_1.ActivityService.getTaskActivity(taskId);
+        res.status(200).json({
+            success: true,
+            data: activity,
             timestamp: new Date(),
         });
     });

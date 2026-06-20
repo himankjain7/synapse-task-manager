@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CommentService = void 0;
 const db_1 = __importDefault(require("../config/db"));
 const project_service_1 = require("./project.service");
+const activity_service_1 = require("./activity.service");
 /**
  * Comment Business Logic Service
  *
@@ -61,6 +62,19 @@ class CommentService {
                 createdAt: new Date(),
             },
         });
+        // Log activity
+        const project = await db_1.default.project.findUnique({
+            where: { id: task.projectId },
+        });
+        if (project) {
+            await activity_service_1.ActivityService.log({
+                workspaceId: project.workspaceId,
+                taskId,
+                userId,
+                action: 'comment_created',
+                details: { content: data.content.trim().substring(0, 200) },
+            });
+        }
         return {
             ...comment,
             user: {
@@ -238,6 +252,20 @@ class CommentService {
         // Only author can delete
         if (comment.userId !== userId) {
             throw new Error('Permission denied: only comment author can delete');
+        }
+        // Log activity before deletion
+        const task = await db_1.default.task.findUnique({
+            where: { id: comment.taskId },
+            include: { project: true },
+        });
+        if (task) {
+            await activity_service_1.ActivityService.log({
+                workspaceId: task.project.workspaceId,
+                taskId: comment.taskId,
+                userId,
+                action: 'comment_deleted',
+                details: { commentId: comment.id, content: comment.content.substring(0, 200) },
+            });
         }
         // Delete comment
         await db_1.default.comment.delete({

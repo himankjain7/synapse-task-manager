@@ -17,8 +17,15 @@ import { triggerHaptic } from '../../../utils/haptics';
 
 const TYPE_ICONS: Record<string, string> = {
   task_assigned: '📋',
-  comment_mention: '💬',
-  due_soon: '⏰',
+  task_created: '📝',
+  task_updated: '🔄',
+  status_changed: '📌',
+  priority_changed: '⚡',
+  due_date_changed: '📅',
+  label_added: '🏷️',
+  label_removed: '🏷️',
+  comment_added: '💬',
+  comment_deleted: '🗑️',
   workspace_invite: '🏢',
 };
 
@@ -30,10 +37,10 @@ export default function NotificationsScreen() {
   const handlePress = useCallback((notification: AppNotification) => {
     triggerHaptic('light');
     markAsRead(notification.id);
-    if (notification.data?.taskId) {
-      router.push(`/(protected)/tasks/${notification.data.taskId}`);
-    } else if (notification.data?.workspaceId) {
-      router.push(`/(protected)/workspaces/${notification.data.workspaceId}`);
+    if (notification.taskId) {
+      router.push(`/(protected)/tasks/${notification.taskId}`);
+    } else if (notification.workspaceId) {
+      router.push(`/(protected)/workspaces/${notification.workspaceId}`);
     }
   }, [markAsRead, router]);
 
@@ -54,7 +61,7 @@ export default function NotificationsScreen() {
           <Text weight="semibold" variant="bodyMedium" numberOfLines={1}>{item.title}</Text>
           <Text variant="caption" color="tertiary">{formatRelativeTime(item.createdAt)}</Text>
         </View>
-        <Text variant="bodySmall" color="secondary" numberOfLines={2}>{item.body}</Text>
+        <Text variant="bodySmall" color="secondary" numberOfLines={2}>{item.message}</Text>
       </View>
       {!item.read && <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} />}
     </TouchableOpacity>

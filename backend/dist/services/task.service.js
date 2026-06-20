@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TaskService = void 0;
 const db_1 = __importDefault(require("../config/db"));
 const project_service_1 = require("./project.service");
+const activity_service_1 = require("./activity.service");
 const models_1 = require("../models");
 /**
  * Task Business Logic Service
@@ -74,6 +75,13 @@ class TaskService {
                 position,
                 createdAt: new Date(),
             },
+        });
+        await activity_service_1.ActivityService.log({
+            workspaceId: project.workspaceId,
+            taskId: task.id,
+            userId,
+            action: 'task_created',
+            details: { title: task.title },
         });
         return this.enrichTaskWithAssignee(task);
     }
@@ -218,6 +226,13 @@ class TaskService {
         if (!task) {
             throw new Error('Task not found');
         }
+        // Get project for workspaceId
+        const project = await db_1.default.project.findUnique({
+            where: { id: task.projectId },
+        });
+        if (!project) {
+            throw new Error('Project not found');
+        }
         // Verify user has project access
         const canAccess = await project_service_1.ProjectService.canAccessProject(task.projectId, userId);
         if (!canAccess) {
@@ -233,6 +248,13 @@ class TaskService {
                 throw new Error('Assigned user not found');
             }
         }
+        // Capture old values for change detection
+        const oldTitle = task.title;
+        const oldDescription = task.description;
+        const oldStatus = task.status;
+        const oldPriority = task.priority;
+        const oldAssigneeId = task.assignedTo;
+        const oldDueDate = task.dueDate;
         // Build update data
         const updateData = { updatedAt: new Date() };
         if (data.title)
@@ -251,6 +273,76 @@ class TaskService {
             where: { id: taskId },
             data: updateData,
         });
+        // Log activity for each changed field
+        const workspaceId = project.workspaceId;
+        if (data.title && data.title.trim() !== oldTitle) {
+            await activity_service_1.ActivityService.log({
+                workspaceId,
+                taskId,
+                userId,
+                action: 'title_changed',
+                details: { from: oldTitle, to: data.title.trim() },
+            });
+        }
+        if (data.description !== undefined && (data.description?.trim() || null) !== oldDescription) {
+            await activity_service_1.ActivityService.log({
+                workspaceId,
+                taskId,
+                userId,
+                action: 'description_changed',
+                details: {},
+            });
+        }
+        if (data.status && data.status !== oldStatus) {
+            await activity_service_1.ActivityService.log({
+                workspaceId,
+                taskId,
+                userId,
+                action: 'status_changed',
+                details: { from: oldStatus, to: data.status },
+            });
+        }
+        if (data.priority && data.priority !== oldPriority) {
+            await activity_service_1.ActivityService.log({
+                workspaceId,
+                taskId,
+                userId,
+                action: 'priority_changed',
+                details: { from: oldPriority, to: data.priority },
+            });
+        }
+        if (assigneeId !== undefined && assigneeId !== oldAssigneeId) {
+            let toName = null;
+            if (assigneeId) {
+                const newAssignee = await db_1.default.user.findUnique({ where: { id: assigneeId } });
+                toName = newAssignee?.name || null;
+            }
+            let fromName = null;
+            if (oldAssigneeId) {
+                const oldAssignee = await db_1.default.user.findUnique({ where: { id: oldAssigneeId } });
+                fromName = oldAssignee?.name || null;
+            }
+            await activity_service_1.ActivityService.log({
+                workspaceId,
+                taskId,
+                userId,
+                action: 'assignee_changed',
+                details: { from: fromName, to: toName },
+            });
+        }
+        if (data.dueDate !== undefined) {
+            const newDueDate = data.dueDate ? new Date(data.dueDate).toISOString().split('T')[0] : null;
+            const oldDueDateStr = oldDueDate ? new Date(oldDueDate).toISOString().split('T')[0] : null;
+            if (newDueDate !== oldDueDateStr) {
+                await activity_service_1.ActivityService.log({
+                    workspaceId,
+                    taskId,
+                    userId,
+                    action: 'due_date_changed',
+                    details: { from: oldDueDateStr, to: newDueDate },
+                });
+            }
+        }
         const enriched = await this.enrichTaskWithAssignee(updated);
         return enriched;
     }
@@ -263,11 +355,28 @@ class TaskService {
      * @param status - New status
      * @returns Updated task
      */
-    static async updateTaskStatus(taskId, status) {
+    static async updateTaskStatus(taskId, userId, status) {
+        const existing = await db_1.default.task.findUnique({
+            where: { id: taskId },
+            include: { project: true },
+        });
+        if (!existing) {
+            throw new Error('Task not found');
+        }
+        const oldStatus = existing.status;
         const task = await db_1.default.task.update({
             where: { id: taskId },
             data: { status, updatedAt: new Date() },
         });
+        if (status !== oldStatus) {
+            await activity_service_1.ActivityService.log({
+                workspaceId: existing.project.workspaceId,
+                taskId,
+                userId,
+                action: 'status_changed',
+                details: { from: oldStatus, to: status },
+            });
+        }
         return this.enrichTaskWithAssignee(task);
     }
     /**
@@ -277,20 +386,46 @@ class TaskService {
      * @param userId - User ID to assign to (or null to unassign)
      * @returns Updated task
      */
-    static async assignTask(taskId, userId) {
-        if (userId) {
-            // Verify user exists
+    static async assignTask(taskId, actingUserId, assigneeId) {
+        const existing = await db_1.default.task.findUnique({
+            where: { id: taskId },
+            include: { project: true },
+        });
+        if (!existing) {
+            throw new Error('Task not found');
+        }
+        if (assigneeId) {
             const user = await db_1.default.user.findUnique({
-                where: { id: userId },
+                where: { id: assigneeId },
             });
             if (!user) {
                 throw new Error('User not found');
             }
         }
+        const oldAssigneeId = existing.assignedTo;
         const task = await db_1.default.task.update({
             where: { id: taskId },
-            data: { assignedTo: userId, updatedAt: new Date() },
+            data: { assignedTo: assigneeId, updatedAt: new Date() },
         });
+        if (assigneeId !== oldAssigneeId) {
+            let toName = null;
+            if (assigneeId) {
+                const newUser = await db_1.default.user.findUnique({ where: { id: assigneeId } });
+                toName = newUser?.name || null;
+            }
+            let fromName = null;
+            if (oldAssigneeId) {
+                const oldUser = await db_1.default.user.findUnique({ where: { id: oldAssigneeId } });
+                fromName = oldUser?.name || null;
+            }
+            await activity_service_1.ActivityService.log({
+                workspaceId: existing.project.workspaceId,
+                taskId,
+                userId: actingUserId,
+                action: 'assignee_changed',
+                details: { from: fromName, to: toName },
+            });
+        }
         return this.enrichTaskWithAssignee(task);
     }
     /**

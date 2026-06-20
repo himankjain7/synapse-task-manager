@@ -1,9 +1,13 @@
 import { Request, Response } from 'express';
 import { TaskService } from '../services/task.service';
 import { ProjectService } from '../services/project.service';
+import { ActivityService } from '../services/activity.service';
 import { asyncHandler } from '../middleware/error.middleware';
 import { APIError, ForbiddenError, NotFoundError } from '../middleware/error.middleware';
 import { CreateTaskRequest, UpdateTaskRequest, TaskStatus, TaskPriority, TaskFilterParams } from '../models';
+import prisma from '../config/db';
+import { getIo } from '../socket';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Task Controller
@@ -17,6 +21,15 @@ import { CreateTaskRequest, UpdateTaskRequest, TaskStatus, TaskPriority, TaskFil
  *
  * All operations require workspace membership.
  */
+const getUserName = async (userId: string): Promise<string> => {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  return user?.name || userId;
+};
+
+const makeNotif = (id: string, type: string, title: string, message: string, taskId?: string, projectId?: string, workspaceId?: string) => ({
+  id, type, title, message, taskId, projectId, workspaceId, createdAt: new Date().toISOString(),
+});
+
 export class TaskController {
   /**
    * POST /projects/:projectId/tasks
@@ -51,6 +64,23 @@ export class TaskController {
 
     const data: CreateTaskRequest = req.body;
     const task = await TaskService.createTask(projectId, userId, data);
+
+    if (task) {
+      const io = getIo();
+      const actorName = await getUserName(userId);
+      const project = await prisma.project.findUnique({ where: { id: projectId }, select: { workspaceId: true } });
+      const wsId = project?.workspaceId;
+
+      const targetUser = data.assignedTo || userId;
+      const assigneeName = data.assignedTo ? await getUserName(data.assignedTo) : actorName;
+      const payload = makeNotif(uuidv4(), 'task_assigned', 'Task Assigned',
+        `${actorName} assigned task "${task.title}" to ${assigneeName}`,
+        task.id, projectId, wsId);
+      io.to(`user:${targetUser}`).emit('notification', payload);
+
+      // Broadcast to project room
+      io.to(`project:${projectId}`).emit('task:created', { task });
+    }
 
     res.status(201).json({
       success: true,
@@ -105,12 +135,6 @@ export class TaskController {
   const userId = req.auth?.userId;
   const { projectId } = req.params;
 
-  console.log('[listTasks] projectId from params:', projectId);
-  console.log('[listTasks] req.params:', JSON.stringify(req.params));
-  console.log('[listTasks] req.path:', req.path);
-  console.log('[listTasks] req.baseUrl:', req.baseUrl);
-  console.log('[listTasks] req.originalUrl:', req.originalUrl);
-
   if (!userId) {
     throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
   }
@@ -128,9 +152,6 @@ export class TaskController {
     userId,
     filters
   );
-
-  console.log('[listTasks] result.data.length:', result.data.length);
-  console.log('[listTasks] result.data[0]?.projectId:', result.data[0]?.projectId);
 
   res.status(200).json({
     success: true,
@@ -164,7 +185,43 @@ export class TaskController {
     }
 
     const data: UpdateTaskRequest = req.body;
+    const oldTask = await TaskService.getTaskById(id);
     const task = await TaskService.updateTask(id, userId, data);
+
+    if (task) {
+      const io = getIo();
+      const actorName = await getUserName(userId);
+      const wsId = oldTask?.project?.workspaceId;
+
+      const targetUser = task.assignedTo || userId;
+      if (data.status && oldTask && oldTask.status !== data.status) {
+        io.to(`user:${targetUser}`).emit('notification',
+          makeNotif(uuidv4(), 'status_changed', 'Status Changed',
+            `${actorName} moved "${task.title}" from ${oldTask!.status.replace(/_/g, ' ')} to ${data.status.replace(/_/g, ' ')}`,
+            task.id, task.projectId, wsId)
+        );
+      } else if (data.priority && oldTask && oldTask.priority !== data.priority) {
+        io.to(`user:${targetUser}`).emit('notification',
+          makeNotif(uuidv4(), 'priority_changed', 'Priority Changed',
+            `${actorName} changed priority of "${task.title}" to ${data.priority}`,
+            task.id, task.projectId, wsId)
+        );
+      } else if (data.dueDate && oldTask && oldTask.dueDate !== data.dueDate) {
+        io.to(`user:${targetUser}`).emit('notification',
+          makeNotif(uuidv4(), 'due_date_changed', 'Due Date Changed',
+            `${actorName} changed due date of "${task.title}"`,
+            task.id, task.projectId, wsId)
+        );
+      } else {
+        io.to(`user:${targetUser}`).emit('notification',
+          makeNotif(uuidv4(), 'task_updated', 'Task Updated',
+            `${actorName} updated "${task.title}"`,
+            task.id, task.projectId, wsId)
+        );
+      }
+      // Broadcast task:updated to project room
+      io.to(`project:${task.projectId}`).emit('task:updated', { task });
+    }
 
     res.status(200).json({
       success: true,
@@ -195,7 +252,20 @@ export class TaskController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    const task = await TaskService.updateTaskStatus(id, status);
+    const task = await TaskService.updateTaskStatus(id, userId, status);
+
+    if (task) {
+      const io = getIo();
+      const project = await prisma.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
+      const wsId = project?.workspaceId;
+      const targetUser = task.assignedTo || userId;
+      const actorName = await getUserName(userId);
+      const payload = makeNotif(uuidv4(), 'status_changed', 'Status Changed',
+        `${actorName} moved "${task.title}" to ${status.replace(/_/g, ' ')}`,
+        task.id, task.projectId, wsId);
+      io.to(`user:${targetUser}`).emit('notification', payload);
+      io.to(`project:${task.projectId}`).emit('task:updated', { task });
+    }
 
     res.status(200).json({
       success: true,
@@ -226,7 +296,30 @@ export class TaskController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    const task = await TaskService.assignTask(id, assignedTo || null);
+    const task = await TaskService.assignTask(id, userId, assignedTo || null);
+
+    if (task && assignedTo) {
+      const io = getIo();
+      const actorName = await getUserName(userId);
+      const assigneeName = await getUserName(assignedTo);
+      const project = await prisma.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
+      const wsId = project?.workspaceId;
+      // Notify the newly assigned user
+      io.to(`user:${assignedTo}`).emit('notification',
+        makeNotif(uuidv4(), 'task_assigned', 'Task Assigned',
+          `${actorName} assigned task "${task.title}" to ${assigneeName}`,
+          task.id, task.projectId, wsId)
+      );
+      // Also notify the actor if they're not the assignee
+      if (assignedTo !== userId) {
+        io.to(`user:${userId}`).emit('notification',
+          makeNotif(uuidv4(), 'task_assigned', 'Task Assigned',
+            `${actorName} assigned task "${task.title}" to ${assigneeName}`,
+            task.id, task.projectId, wsId)
+        );
+      }
+      io.to(`project:${task.projectId}`).emit('task:assigned', { taskId: task.id, assigneeId: assignedTo });
+    }
 
     res.status(200).json({
       success: true,
@@ -375,6 +468,30 @@ export class TaskController {
     res.status(200).json({
       success: true,
       data: tasks,
+      timestamp: new Date(),
+    });
+  });
+
+  /**
+   * GET /tasks/:taskId/activity
+   * Get activity log for a task
+   *
+   * Response: 200 OK
+   * Array of activity log entries (newest first)
+   */
+  static getTaskActivity = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const userId = req.auth?.userId;
+    const { taskId } = req.params;
+
+    if (!userId) {
+      throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
+    }
+
+    const activity = await ActivityService.getTaskActivity(taskId);
+
+    res.status(200).json({
+      success: true,
+      data: activity,
       timestamp: new Date(),
     });
   });

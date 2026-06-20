@@ -9,4 +9,5 @@ router.use(auth_middleware_1.requireAuth);
 router.get('/:id', (0, validation_middleware_1.validateUUID)('id'), task_controller_1.TaskController.getTask);
 router.patch('/:id', (0, validation_middleware_1.validateUUID)('id'), validation_middleware_1.validateBody, (0, validation_middleware_1.sanitizeFields)(['title', 'description']), task_controller_1.TaskController.updateTask);
 router.delete('/:id', (0, validation_middleware_1.validateUUID)('id'), task_controller_1.TaskController.deleteTask);
+router.get('/:taskId/activity', (0, validation_middleware_1.validateUUID)('taskId'), task_controller_1.TaskController.getTaskActivity);
 exports.default = router;
