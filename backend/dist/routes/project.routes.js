@@ -45,12 +45,7 @@ router.use(auth_middleware_1.requireAuth);
  * Response: 201 Created
  * Project object with owner
  */
-router.post('/', (req, _res, next) => {
-    console.log('PROJECT CREATE REQUEST');
-    console.log('Params:', req.params);
-    console.log('Body:', req.body);
-    next();
-}, validation_middleware_1.validateBody, (0, validation_middleware_1.validateRequired)(['name']), (0, validation_middleware_1.sanitizeFields)(['name', 'description']), project_controller_1.ProjectController.createProject);
+router.post('/', validation_middleware_1.validateBody, (0, validation_middleware_1.validateRequired)(['name']), (0, validation_middleware_1.sanitizeFields)(['name', 'description']), project_controller_1.ProjectController.createProject);
 /**
  * GET /workspaces/:workspaceId/projects
  * List projects in workspace

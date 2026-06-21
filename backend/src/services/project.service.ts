@@ -1,5 +1,6 @@
 import prisma from '../config/db';
 import { WorkspaceService } from './workspace.service';
+import { ActivityService } from './activity.service';
 import {
   Project,
   ProjectWithOwner,
@@ -79,6 +80,14 @@ export class ProjectService {
         status: ProjectStatus.ACTIVE,
         createdAt: new Date(),
       },
+    });
+
+    await ActivityService.log({
+      workspaceId,
+      taskId: null,
+      userId,
+      action: 'project_created',
+      details: { name: project.name },
     });
 
     return {
@@ -358,7 +367,7 @@ export class ProjectService {
    * @param userId - User ID (must be owner or admin)
    * @throws Error if permission denied or project not found
    */
-  static async archiveProject(projectId: string, userId: string): Promise<void> {
+  static async archiveProject(projectId: string, userId: string): Promise<Project> {
     // Get project
     const project = await prisma.project.findUnique({
       where: { id: projectId },
@@ -383,12 +392,22 @@ export class ProjectService {
     }
 
     // Archive project
-    await prisma.project.update({
+    const updated = await prisma.project.update({
       where: { id: projectId },
       data: {
         status: ProjectStatus.ARCHIVED,
       },
     });
+
+    await ActivityService.log({
+      workspaceId: project.workspaceId,
+      taskId: null,
+      userId,
+      action: 'project_archived',
+      details: { name: project.name },
+    });
+
+    return { ...updated, status: updated.status as ProjectStatus };
   }
 
   /**
@@ -400,7 +419,7 @@ export class ProjectService {
    * @param userId - User ID (must be owner or admin)
    * @throws Error if permission denied or project not found
    */
-  static async unarchiveProject(projectId: string, userId: string): Promise<void> {
+  static async unarchiveProject(projectId: string, userId: string): Promise<Project> {
     // Get project
     const project = await prisma.project.findUnique({
       where: { id: projectId },
@@ -425,12 +444,22 @@ export class ProjectService {
     }
 
     // Unarchive project
-    await prisma.project.update({
+    const updated = await prisma.project.update({
       where: { id: projectId },
       data: {
         status: ProjectStatus.ACTIVE,
       },
     });
+
+    await ActivityService.log({
+      workspaceId: project.workspaceId,
+      taskId: null,
+      userId,
+      action: 'project_unarchived',
+      details: { name: project.name },
+    });
+
+    return { ...updated, status: updated.status as ProjectStatus };
   }
 
   /**

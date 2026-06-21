@@ -41,4 +41,13 @@ export const authApi = {
     const response = await api.get<AuthApiResponse<MeResponse>>('/api/v1/auth/me');
     return response.data.data;
   },
+
+  updateProfile: async (name: string, avatarUrl?: string): Promise<User> => {
+    const response = await api.patch<AuthApiResponse<User>>('/api/v1/auth/profile', { name, avatarUrl });
+    return response.data.data;
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
+    await api.post('/api/v1/auth/change-password', { currentPassword, newPassword });
+  },
 };

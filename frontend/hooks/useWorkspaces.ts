@@ -30,6 +30,7 @@ export function useCreateWorkspace() {
     mutationFn: (input: CreateWorkspaceInput) => workspaceApi.create(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.workspaces.lists() });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -41,6 +42,7 @@ export function useUpdateWorkspace(id: string | undefined) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.workspaces.detail(id!) });
       queryClient.invalidateQueries({ queryKey: QueryKeys.workspaces.lists() });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -51,6 +53,7 @@ export function useDeleteWorkspace() {
     mutationFn: (id: string) => workspaceApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.workspaces.lists() });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -69,6 +72,7 @@ export function useInviteMember(workspaceId: string | undefined) {
     mutationFn: (input: InviteMemberInput) => workspaceApi.inviteMember(workspaceId!, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.workspaces.members(workspaceId!) });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -80,6 +84,7 @@ export function useUpdateMemberRole(workspaceId: string | undefined) {
       workspaceApi.updateMemberRole(workspaceId!, memberId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.workspaces.members(workspaceId!) });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -90,6 +95,7 @@ export function useRemoveMember(workspaceId: string | undefined) {
     mutationFn: (memberId: string) => workspaceApi.removeMember(workspaceId!, memberId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.workspaces.members(workspaceId!) });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }

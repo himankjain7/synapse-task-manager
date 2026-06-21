@@ -65,7 +65,7 @@ router.post('/signup', validation_middleware_1.validateBody, (0, validation_midd
  * Response: 200 OK
  * Sets refreshToken in httpOnly cookie (auto-sent on future requests)
  */
-router.post('/login', validation_middleware_1.validateBody, (0, validation_middleware_1.validateRequired)(['email', 'password']), (0, validation_middleware_1.validateEmailField)('email'), (0, validation_middleware_1.validatePasswordField)('password'), auth_controller_1.AuthController.login);
+router.post('/login', validation_middleware_1.validateBody, (0, validation_middleware_1.validateRequired)(['email', 'password']), (0, validation_middleware_1.validateEmailField)('email'), auth_controller_1.AuthController.login);
 /**
  * POST /auth/refresh
  * Exchange refresh token for new access token
@@ -172,4 +172,6 @@ router.get('/me', auth_middleware_1.requireAuth, auth_controller_1.AuthControlle
  * }
  */
 router.post('/verify-token', auth_controller_1.AuthController.verifyToken);
+router.patch('/profile', auth_middleware_1.requireAuth, auth_controller_1.AuthController.updateProfile);
+router.post('/change-password', auth_middleware_1.requireAuth, auth_controller_1.AuthController.changePassword);
 exports.default = router;

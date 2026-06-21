@@ -12,6 +12,9 @@
     "prisma:studio": "prisma studio",
     "test": "jest --runInBand --detectOpenHandles"
   },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -25,6 +28,7 @@
     "express-rate-limit": "^8.5.2",
     "google-auth-library": "^10.7.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.2.0",
     "socket.io": "^4.7.5",
     "uuid": "^14.0.0",
     "zod": "^3.23.8"
@@ -35,6 +39,7 @@
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.12",
     "@types/jsonwebtoken": "^9.0.6",
+    "@types/multer": "^2.1.0",
     "@types/node": "^20.12.12",
     "@types/supertest": "^6.0.2",
     "@types/uuid": "^10.0.0",

@@ -14,6 +14,9 @@ import taskRouter from './routes/task.routes';
 import commentRouter from './routes/comment.routes';
 import labelRouter from './routes/label.routes';
 import standaloneTaskRouter from './routes/standalone-task.routes';
+import analyticsRouter from './routes/analytics.routes';
+import searchRouter from './routes/search.routes';
+import attachmentRouter from './routes/attachment.routes';
 
 // Import Middlewares
 import { errorHandler } from './middleware/error.middleware';
@@ -44,6 +47,14 @@ app.use('/api/v1/tasks', standaloneTaskRouter);
 app.use('/api/v1/tasks/:taskId/comments', commentRouter);
 app.use('/api/v1/projects/:projectId', labelRouter);
 app.use('/api/v1/tasks', labelRouter);
+
+// Mount Analytics, Search, and Attachment routes
+app.use('/api/v1/analytics', analyticsRouter);
+app.use('/api/v1/search', searchRouter);
+app.use('/api/v1/tasks/:taskId/attachments', attachmentRouter);
+
+// Serve static uploads
+app.use('/uploads', express.static('uploads'));
 
 // Global Exception Interceptor Middleware (must be registered last)
 app.use(errorHandler);

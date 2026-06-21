@@ -219,6 +219,19 @@ class CommentService {
                 updatedAt: new Date(),
             },
         });
+        const task = await db_1.default.task.findUnique({
+            where: { id: comment.taskId },
+            include: { project: true },
+        });
+        if (task) {
+            await activity_service_1.ActivityService.log({
+                workspaceId: task.project.workspaceId,
+                taskId: comment.taskId,
+                userId,
+                action: 'comment_updated',
+                details: { commentId: comment.id },
+            });
+        }
         return {
             ...updated,
             user: {

@@ -296,6 +296,33 @@ export class AuthController {
   });
 
   /**
+   * PATCH /auth/profile
+   * Update user profile
+   */
+  static updateProfile = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const userId = req.auth?.userId;
+    if (!userId) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'Authentication required' }); return; }
+    const { name, avatarUrl } = req.body;
+    if (!name || name.trim().length < 1) { res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Name is required' }); return; }
+    const user = await AuthService.updateProfile(userId, name, avatarUrl);
+    res.status(200).json({ success: true, data: user, message: 'Profile updated', timestamp: new Date() });
+  });
+
+  /**
+   * POST /auth/change-password
+   * Change user password
+   */
+  static changePassword = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const userId = req.auth?.userId;
+    if (!userId) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'Authentication required' }); return; }
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) { res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Current and new password required' }); return; }
+    if (newPassword.length < 8) { res.status(400).json({ code: 'VALIDATION_ERROR', message: 'New password must be at least 8 characters' }); return; }
+    await AuthService.changePassword(userId, currentPassword, newPassword);
+    res.status(200).json({ success: true, message: 'Password changed', timestamp: new Date() });
+  });
+
+  /**
    * GET /auth/me
    * Get current authenticated user
    *

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.authenticateToken = exports.validate = exports.requestLogger = exports.cors = exports.rateLimit = exports.workspacePermission = exports.optionalAuth = exports.requireAuth = void 0;
+exports.authenticateToken = exports.validate = exports.cors = exports.rateLimit = exports.workspacePermission = exports.optionalAuth = exports.requireAuth = void 0;
 const jwt_1 = require("../utils/jwt");
 /**
  * Authentication Middleware
@@ -241,28 +241,6 @@ const cors = () => {
     };
 };
 exports.cors = cors;
-/**
- * Request Logging Middleware
- *
- * Logs incoming requests for debugging and monitoring.
- * Records method, path, status, and response time.
- *
- * @returns Middleware function
- */
-const requestLogger = () => {
-    return (req, res, next) => {
-        const start = Date.now();
-        const user = req.auth?.userId || 'anonymous';
-        // Log when response is sent
-        res.on('finish', () => {
-            const duration = Date.now() - start;
-            const status = res.statusCode;
-            console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - ${status} (${duration}ms) - ${user}`);
-        });
-        next();
-    };
-};
-exports.requestLogger = requestLogger;
 /**
  * Request Validation Middleware
  *

@@ -281,33 +281,6 @@ export const cors = () => {
 };
 
 /**
- * Request Logging Middleware
- *
- * Logs incoming requests for debugging and monitoring.
- * Records method, path, status, and response time.
- *
- * @returns Middleware function
- */
-export const requestLogger = () => {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const start = Date.now();
-    const user = req.auth?.userId || 'anonymous';
-
-    // Log when response is sent
-    res.on('finish', () => {
-      const duration = Date.now() - start;
-      const status = res.statusCode;
-
-      console.log(
-        `[${new Date().toISOString()}] ${req.method} ${req.path} - ${status} (${duration}ms) - ${user}`
-      );
-    });
-
-    next();
-  };
-};
-
-/**
  * Request Validation Middleware
  *
  * Validates request body against schema.

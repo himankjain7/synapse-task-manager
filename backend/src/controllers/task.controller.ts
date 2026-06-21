@@ -8,27 +8,7 @@ import { CreateTaskRequest, UpdateTaskRequest, TaskStatus, TaskPriority, TaskFil
 import prisma from '../config/db';
 import { getIo } from '../socket';
 import { v4 as uuidv4 } from 'uuid';
-
-/**
- * Task Controller
- *
- * Handles HTTP requests for task operations:
- * - Create/read/update/delete tasks
- * - Assign/unassign tasks
- * - Update task status and priority
- * - Reorder tasks (drag-and-drop)
- * - Bulk update tasks
- *
- * All operations require workspace membership.
- */
-const getUserName = async (userId: string): Promise<string> => {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-  return user?.name || userId;
-};
-
-const makeNotif = (id: string, type: string, title: string, message: string, taskId?: string, projectId?: string, workspaceId?: string) => ({
-  id, type, title, message, taskId, projectId, workspaceId, createdAt: new Date().toISOString(),
-});
+import { makeNotif, getUserInfo } from '../utils/notification';
 
 export class TaskController {
   /**
@@ -67,18 +47,16 @@ export class TaskController {
 
     if (task) {
       const io = getIo();
-      const actorName = await getUserName(userId);
+      const actor = await getUserInfo(userId);
       const project = await prisma.project.findUnique({ where: { id: projectId }, select: { workspaceId: true } });
       const wsId = project?.workspaceId;
 
       const targetUser = data.assignedTo || userId;
-      const assigneeName = data.assignedTo ? await getUserName(data.assignedTo) : actorName;
+      const assigneeName = data.assignedTo ? (await getUserInfo(data.assignedTo)).name : actor.name;
       const payload = makeNotif(uuidv4(), 'task_assigned', 'Task Assigned',
-        `${actorName} assigned task "${task.title}" to ${assigneeName}`,
-        task.id, projectId, wsId);
+        `${actor.name} assigned task "${task.title}" to ${assigneeName}`,
+        actor, task.id, projectId, wsId);
       io.to(`user:${targetUser}`).emit('notification', payload);
-
-      // Broadcast to project room
       io.to(`project:${projectId}`).emit('task:created', { task });
     }
 
@@ -190,36 +168,35 @@ export class TaskController {
 
     if (task) {
       const io = getIo();
-      const actorName = await getUserName(userId);
+      const actor = await getUserInfo(userId);
       const wsId = oldTask?.project?.workspaceId;
 
       const targetUser = task.assignedTo || userId;
       if (data.status && oldTask && oldTask.status !== data.status) {
         io.to(`user:${targetUser}`).emit('notification',
           makeNotif(uuidv4(), 'status_changed', 'Status Changed',
-            `${actorName} moved "${task.title}" from ${oldTask!.status.replace(/_/g, ' ')} to ${data.status.replace(/_/g, ' ')}`,
-            task.id, task.projectId, wsId)
+            `${actor.name} moved "${task.title}" from ${oldTask!.status.replace(/_/g, ' ')} to ${data.status.replace(/_/g, ' ')}`,
+            actor, task.id, task.projectId, wsId)
         );
       } else if (data.priority && oldTask && oldTask.priority !== data.priority) {
         io.to(`user:${targetUser}`).emit('notification',
           makeNotif(uuidv4(), 'priority_changed', 'Priority Changed',
-            `${actorName} changed priority of "${task.title}" to ${data.priority}`,
-            task.id, task.projectId, wsId)
+            `${actor.name} changed priority of "${task.title}" to ${data.priority}`,
+            actor, task.id, task.projectId, wsId)
         );
       } else if (data.dueDate && oldTask && oldTask.dueDate !== data.dueDate) {
         io.to(`user:${targetUser}`).emit('notification',
           makeNotif(uuidv4(), 'due_date_changed', 'Due Date Changed',
-            `${actorName} changed due date of "${task.title}"`,
-            task.id, task.projectId, wsId)
+            `${actor.name} changed due date of "${task.title}"`,
+            actor, task.id, task.projectId, wsId)
         );
       } else {
         io.to(`user:${targetUser}`).emit('notification',
           makeNotif(uuidv4(), 'task_updated', 'Task Updated',
-            `${actorName} updated "${task.title}"`,
-            task.id, task.projectId, wsId)
+            `${actor.name} updated "${task.title}"`,
+            actor, task.id, task.projectId, wsId)
         );
       }
-      // Broadcast task:updated to project room
       io.to(`project:${task.projectId}`).emit('task:updated', { task });
     }
 
@@ -259,10 +236,10 @@ export class TaskController {
       const project = await prisma.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
       const wsId = project?.workspaceId;
       const targetUser = task.assignedTo || userId;
-      const actorName = await getUserName(userId);
+      const actor = await getUserInfo(userId);
       const payload = makeNotif(uuidv4(), 'status_changed', 'Status Changed',
-        `${actorName} moved "${task.title}" to ${status.replace(/_/g, ' ')}`,
-        task.id, task.projectId, wsId);
+        `${actor.name} moved "${task.title}" to ${status.replace(/_/g, ' ')}`,
+        actor, task.id, task.projectId, wsId);
       io.to(`user:${targetUser}`).emit('notification', payload);
       io.to(`project:${task.projectId}`).emit('task:updated', { task });
     }
@@ -300,22 +277,20 @@ export class TaskController {
 
     if (task && assignedTo) {
       const io = getIo();
-      const actorName = await getUserName(userId);
-      const assigneeName = await getUserName(assignedTo);
+      const actor = await getUserInfo(userId);
+      const assigneeName = (await getUserInfo(assignedTo)).name;
       const project = await prisma.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
       const wsId = project?.workspaceId;
-      // Notify the newly assigned user
       io.to(`user:${assignedTo}`).emit('notification',
         makeNotif(uuidv4(), 'task_assigned', 'Task Assigned',
-          `${actorName} assigned task "${task.title}" to ${assigneeName}`,
-          task.id, task.projectId, wsId)
+          `${actor.name} assigned task "${task.title}" to ${assigneeName}`,
+          actor, task.id, task.projectId, wsId)
       );
-      // Also notify the actor if they're not the assignee
       if (assignedTo !== userId) {
         io.to(`user:${userId}`).emit('notification',
           makeNotif(uuidv4(), 'task_assigned', 'Task Assigned',
-            `${actorName} assigned task "${task.title}" to ${assigneeName}`,
-            task.id, task.projectId, wsId)
+            `${actor.name} assigned task "${task.title}" to ${assigneeName}`,
+            actor, task.id, task.projectId, wsId)
         );
       }
       io.to(`project:${task.projectId}`).emit('task:assigned', { taskId: task.id, assigneeId: assignedTo });
@@ -343,7 +318,25 @@ export class TaskController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
+    const taskInfo = await prisma.task.findUnique({
+      where: { id },
+      select: { title: true, projectId: true, assignedTo: true, project: { select: { workspaceId: true } } },
+    });
+
     await TaskService.deleteTask(id, userId);
+
+    if (taskInfo) {
+      const io = getIo();
+      const actor = await getUserInfo(userId);
+      const wsId = taskInfo.project?.workspaceId;
+      const payload = makeNotif(uuidv4(), 'task_deleted', 'Task Deleted',
+        `${actor.name} deleted "${taskInfo.title}"`,
+        actor, id, taskInfo.projectId, wsId);
+      if (taskInfo.assignedTo) {
+        io.to(`user:${taskInfo.assignedTo}`).emit('notification', payload);
+      }
+      io.to(`project:${taskInfo.projectId}`).emit('task:deleted', { taskId: id });
+    }
 
     res.status(204).send();
   });

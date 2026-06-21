@@ -24,21 +24,19 @@ const initSocketServer = (httpServer) => {
             return next(new Error('Authentication error: Token required'));
         }
         try {
-            // Clean token string if "Bearer <token>" formatting is used
             const cleanToken = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
             const jwtSecret = process.env.JWT_SECRET || 'dev_secret_only_for_local_debugging_replace_in_production';
             const decoded = jsonwebtoken_1.default.verify(cleanToken, jwtSecret);
             socket.user = { userId: decoded.userId ?? decoded.id ?? decoded.sub, email: decoded.email };
             return next();
         }
-        catch (err) {
+        catch (_err) {
             return next(new Error('Authentication error: Invalid token'));
         }
     });
     // Client lifecycle events
     io.on('connection', (socket) => {
         const userId = socket.user?.userId;
-        console.log(`[Socket Connected]: User ${socket.user?.email} (ID: ${userId})`);
         if (userId) {
             socket.join(`user:${userId}`);
         }
@@ -46,14 +44,12 @@ const initSocketServer = (httpServer) => {
         socket.on('join:project', (payload) => {
             if (payload.projectId) {
                 socket.join(`project:${payload.projectId}`);
-                console.log(`[Socket Room]: Socket ${socket.id} joined project:${payload.projectId}`);
             }
         });
         // Channel membership: Leave a project room
         socket.on('leave:project', (payload) => {
             if (payload.projectId) {
                 socket.leave(`project:${payload.projectId}`);
-                console.log(`[Socket Room]: Socket ${socket.id} left project:${payload.projectId}`);
             }
         });
         // Typing Activity Indicator Broadcast
@@ -75,7 +71,6 @@ const initSocketServer = (httpServer) => {
             if (userId) {
                 socket.leave(`user:${userId}`);
             }
-            console.log(`[Socket Disconnected]: Socket ID ${socket.id}`);
         });
     });
     return io;

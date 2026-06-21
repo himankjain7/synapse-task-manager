@@ -1,4 +1,5 @@
 import prisma from '../config/db';
+import { ActivityService } from './activity.service';
 import {
   Workspace,
   WorkspaceWithOwner,
@@ -70,6 +71,14 @@ export class WorkspaceService {
         role: WorkspaceMemberRole.OWNER,
         joinedAt: new Date(),
       },
+    });
+
+    await ActivityService.log({
+      workspaceId: workspace.id,
+      taskId: null,
+      userId,
+      action: 'workspace_created',
+      details: { name: workspace.name },
     });
 
     return {
@@ -317,6 +326,14 @@ export class WorkspaceService {
       },
     });
 
+    await ActivityService.log({
+      workspaceId,
+      taskId: null,
+      userId,
+      action: 'member_added',
+      details: { targetUserId: data.userId },
+    });
+
     return {
       ...member,
       user: {
@@ -495,6 +512,14 @@ export class WorkspaceService {
     if (member.role === WorkspaceMemberRole.OWNER) {
       throw new Error('Cannot remove workspace owner. Delete workspace instead.');
     }
+
+    await ActivityService.log({
+      workspaceId,
+      taskId: null,
+      userId,
+      action: 'member_removed',
+      details: { targetUserId: memberId },
+    });
 
     // Remove member
     await prisma.workspaceMember.delete({

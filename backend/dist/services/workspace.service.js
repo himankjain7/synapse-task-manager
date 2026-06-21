@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WorkspaceService = void 0;
 const db_1 = __importDefault(require("../config/db"));
+const activity_service_1 = require("./activity.service");
 const models_1 = require("../models");
 /**
  * Workspace Business Logic Service
@@ -58,6 +59,13 @@ class WorkspaceService {
                 role: models_1.WorkspaceMemberRole.OWNER,
                 joinedAt: new Date(),
             },
+        });
+        await activity_service_1.ActivityService.log({
+            workspaceId: workspace.id,
+            taskId: null,
+            userId,
+            action: 'workspace_created',
+            details: { name: workspace.name },
         });
         return {
             ...workspace,
@@ -261,6 +269,13 @@ class WorkspaceService {
                 joinedAt: new Date(),
             },
         });
+        await activity_service_1.ActivityService.log({
+            workspaceId,
+            taskId: null,
+            userId,
+            action: 'member_added',
+            details: { targetUserId: data.userId },
+        });
         return {
             ...member,
             user: {
@@ -406,6 +421,13 @@ class WorkspaceService {
         if (member.role === models_1.WorkspaceMemberRole.OWNER) {
             throw new Error('Cannot remove workspace owner. Delete workspace instead.');
         }
+        await activity_service_1.ActivityService.log({
+            workspaceId,
+            taskId: null,
+            userId,
+            action: 'member_removed',
+            details: { targetUserId: memberId },
+        });
         // Remove member
         await db_1.default.workspaceMember.delete({
             where: {

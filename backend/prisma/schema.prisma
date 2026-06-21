@@ -53,6 +53,7 @@ model User {
   comments         Comment[]
   notifications    Notification[]
   activityLogs     ActivityLog[]
+  attachments      Attachment[]
 
   @@map("users")
 }
@@ -128,6 +129,7 @@ model Task {
   comments    Comment[]
   labels      TaskLabelAssignment[]
   activityLogs ActivityLog[]
+  attachments Attachment[]
 
   @@map("tasks")
 }
@@ -171,6 +173,22 @@ model TaskLabelAssignment {
 
   @@unique([taskId, labelId])
   @@map("task_label_assignments")
+}
+
+model Attachment {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  taskId     String   @map("task_id") @db.Uuid
+  uploadedBy String   @map("uploaded_by") @db.Uuid
+  fileName   String   @map("file_name")
+  fileUrl    String   @map("file_url")
+  mimeType   String   @map("mime_type")
+  size       Int
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader   User     @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+
+  @@map("attachments")
 }
 
 model Notification {

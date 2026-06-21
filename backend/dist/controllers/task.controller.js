@@ -12,25 +12,7 @@ const error_middleware_2 = require("../middleware/error.middleware");
 const db_1 = __importDefault(require("../config/db"));
 const socket_1 = require("../socket");
 const uuid_1 = require("uuid");
-/**
- * Task Controller
- *
- * Handles HTTP requests for task operations:
- * - Create/read/update/delete tasks
- * - Assign/unassign tasks
- * - Update task status and priority
- * - Reorder tasks (drag-and-drop)
- * - Bulk update tasks
- *
- * All operations require workspace membership.
- */
-const getUserName = async (userId) => {
-    const user = await db_1.default.user.findUnique({ where: { id: userId }, select: { name: true } });
-    return user?.name || userId;
-};
-const makeNotif = (id, type, title, message, taskId, projectId, workspaceId) => ({
-    id, type, title, message, taskId, projectId, workspaceId, createdAt: new Date().toISOString(),
-});
+const notification_1 = require("../utils/notification");
 class TaskController {
     /**
      * POST /projects/:projectId/tasks
@@ -64,14 +46,13 @@ class TaskController {
         const task = await task_service_1.TaskService.createTask(projectId, userId, data);
         if (task) {
             const io = (0, socket_1.getIo)();
-            const actorName = await getUserName(userId);
+            const actor = await (0, notification_1.getUserInfo)(userId);
             const project = await db_1.default.project.findUnique({ where: { id: projectId }, select: { workspaceId: true } });
             const wsId = project?.workspaceId;
             const targetUser = data.assignedTo || userId;
-            const assigneeName = data.assignedTo ? await getUserName(data.assignedTo) : actorName;
-            const payload = makeNotif((0, uuid_1.v4)(), 'task_assigned', 'Task Assigned', `${actorName} assigned task "${task.title}" to ${assigneeName}`, task.id, projectId, wsId);
+            const assigneeName = data.assignedTo ? (await (0, notification_1.getUserInfo)(data.assignedTo)).name : actor.name;
+            const payload = (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'task_assigned', 'Task Assigned', `${actor.name} assigned task "${task.title}" to ${assigneeName}`, actor, task.id, projectId, wsId);
             io.to(`user:${targetUser}`).emit('notification', payload);
-            // Broadcast to project room
             io.to(`project:${projectId}`).emit('task:created', { task });
         }
         res.status(201).json({
@@ -165,22 +146,21 @@ class TaskController {
         const task = await task_service_1.TaskService.updateTask(id, userId, data);
         if (task) {
             const io = (0, socket_1.getIo)();
-            const actorName = await getUserName(userId);
+            const actor = await (0, notification_1.getUserInfo)(userId);
             const wsId = oldTask?.project?.workspaceId;
             const targetUser = task.assignedTo || userId;
             if (data.status && oldTask && oldTask.status !== data.status) {
-                io.to(`user:${targetUser}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'status_changed', 'Status Changed', `${actorName} moved "${task.title}" from ${oldTask.status.replace(/_/g, ' ')} to ${data.status.replace(/_/g, ' ')}`, task.id, task.projectId, wsId));
+                io.to(`user:${targetUser}`).emit('notification', (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'status_changed', 'Status Changed', `${actor.name} moved "${task.title}" from ${oldTask.status.replace(/_/g, ' ')} to ${data.status.replace(/_/g, ' ')}`, actor, task.id, task.projectId, wsId));
             }
             else if (data.priority && oldTask && oldTask.priority !== data.priority) {
-                io.to(`user:${targetUser}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'priority_changed', 'Priority Changed', `${actorName} changed priority of "${task.title}" to ${data.priority}`, task.id, task.projectId, wsId));
+                io.to(`user:${targetUser}`).emit('notification', (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'priority_changed', 'Priority Changed', `${actor.name} changed priority of "${task.title}" to ${data.priority}`, actor, task.id, task.projectId, wsId));
             }
             else if (data.dueDate && oldTask && oldTask.dueDate !== data.dueDate) {
-                io.to(`user:${targetUser}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'due_date_changed', 'Due Date Changed', `${actorName} changed due date of "${task.title}"`, task.id, task.projectId, wsId));
+                io.to(`user:${targetUser}`).emit('notification', (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'due_date_changed', 'Due Date Changed', `${actor.name} changed due date of "${task.title}"`, actor, task.id, task.projectId, wsId));
             }
             else {
-                io.to(`user:${targetUser}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'task_updated', 'Task Updated', `${actorName} updated "${task.title}"`, task.id, task.projectId, wsId));
+                io.to(`user:${targetUser}`).emit('notification', (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'task_updated', 'Task Updated', `${actor.name} updated "${task.title}"`, actor, task.id, task.projectId, wsId));
             }
-            // Broadcast task:updated to project room
             io.to(`project:${task.projectId}`).emit('task:updated', { task });
         }
         res.status(200).json({
@@ -215,8 +195,8 @@ class TaskController {
             const project = await db_1.default.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
             const wsId = project?.workspaceId;
             const targetUser = task.assignedTo || userId;
-            const actorName = await getUserName(userId);
-            const payload = makeNotif((0, uuid_1.v4)(), 'status_changed', 'Status Changed', `${actorName} moved "${task.title}" to ${status.replace(/_/g, ' ')}`, task.id, task.projectId, wsId);
+            const actor = await (0, notification_1.getUserInfo)(userId);
+            const payload = (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'status_changed', 'Status Changed', `${actor.name} moved "${task.title}" to ${status.replace(/_/g, ' ')}`, actor, task.id, task.projectId, wsId);
             io.to(`user:${targetUser}`).emit('notification', payload);
             io.to(`project:${task.projectId}`).emit('task:updated', { task });
         }
@@ -249,15 +229,13 @@ class TaskController {
         const task = await task_service_1.TaskService.assignTask(id, userId, assignedTo || null);
         if (task && assignedTo) {
             const io = (0, socket_1.getIo)();
-            const actorName = await getUserName(userId);
-            const assigneeName = await getUserName(assignedTo);
+            const actor = await (0, notification_1.getUserInfo)(userId);
+            const assigneeName = (await (0, notification_1.getUserInfo)(assignedTo)).name;
             const project = await db_1.default.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
             const wsId = project?.workspaceId;
-            // Notify the newly assigned user
-            io.to(`user:${assignedTo}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'task_assigned', 'Task Assigned', `${actorName} assigned task "${task.title}" to ${assigneeName}`, task.id, task.projectId, wsId));
-            // Also notify the actor if they're not the assignee
+            io.to(`user:${assignedTo}`).emit('notification', (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'task_assigned', 'Task Assigned', `${actor.name} assigned task "${task.title}" to ${assigneeName}`, actor, task.id, task.projectId, wsId));
             if (assignedTo !== userId) {
-                io.to(`user:${userId}`).emit('notification', makeNotif((0, uuid_1.v4)(), 'task_assigned', 'Task Assigned', `${actorName} assigned task "${task.title}" to ${assigneeName}`, task.id, task.projectId, wsId));
+                io.to(`user:${userId}`).emit('notification', (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'task_assigned', 'Task Assigned', `${actor.name} assigned task "${task.title}" to ${assigneeName}`, actor, task.id, task.projectId, wsId));
             }
             io.to(`project:${task.projectId}`).emit('task:assigned', { taskId: task.id, assigneeId: assignedTo });
         }
@@ -280,7 +258,21 @@ class TaskController {
         if (!userId) {
             throw new error_middleware_2.APIError(401, 'UNAUTHORIZED', 'Authentication required');
         }
+        const taskInfo = await db_1.default.task.findUnique({
+            where: { id },
+            select: { title: true, projectId: true, assignedTo: true, project: { select: { workspaceId: true } } },
+        });
         await task_service_1.TaskService.deleteTask(id, userId);
+        if (taskInfo) {
+            const io = (0, socket_1.getIo)();
+            const actor = await (0, notification_1.getUserInfo)(userId);
+            const wsId = taskInfo.project?.workspaceId;
+            const payload = (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'task_deleted', 'Task Deleted', `${actor.name} deleted "${taskInfo.title}"`, actor, id, taskInfo.projectId, wsId);
+            if (taskInfo.assignedTo) {
+                io.to(`user:${taskInfo.assignedTo}`).emit('notification', payload);
+            }
+            io.to(`project:${taskInfo.projectId}`).emit('task:deleted', { taskId: id });
+        }
         res.status(204).send();
     });
     /**

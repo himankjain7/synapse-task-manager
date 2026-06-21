@@ -33,14 +33,13 @@ export const initSocketServer = (httpServer: HttpServer): Server => {
     }
 
     try {
-      // Clean token string if "Bearer <token>" formatting is used
       const cleanToken = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
       const jwtSecret = process.env.JWT_SECRET || 'dev_secret_only_for_local_debugging_replace_in_production';
       const decoded = jwt.verify(cleanToken, jwtSecret) as any;
       
       socket.user = { userId: decoded.userId ?? decoded.id ?? decoded.sub, email: decoded.email };
       return next();
-    } catch (err) {
+    } catch (_err: any) {
       return next(new Error('Authentication error: Invalid token'));
     }
   });
@@ -48,7 +47,6 @@ export const initSocketServer = (httpServer: HttpServer): Server => {
   // Client lifecycle events
   io.on('connection', (socket: AuthenticatedSocket) => {
     const userId = socket.user?.userId;
-    console.log(`[Socket Connected]: User ${socket.user?.email} (ID: ${userId})`);
 
     if (userId) {
       socket.join(`user:${userId}`);
@@ -58,7 +56,6 @@ export const initSocketServer = (httpServer: HttpServer): Server => {
     socket.on('join:project', (payload: { projectId: string }) => {
       if (payload.projectId) {
         socket.join(`project:${payload.projectId}`);
-        console.log(`[Socket Room]: Socket ${socket.id} joined project:${payload.projectId}`);
       }
     });
 
@@ -66,7 +63,6 @@ export const initSocketServer = (httpServer: HttpServer): Server => {
     socket.on('leave:project', (payload: { projectId: string }) => {
       if (payload.projectId) {
         socket.leave(`project:${payload.projectId}`);
-        console.log(`[Socket Room]: Socket ${socket.id} left project:${payload.projectId}`);
       }
     });
 
@@ -91,7 +87,6 @@ export const initSocketServer = (httpServer: HttpServer): Server => {
       if (userId) {
         socket.leave(`user:${userId}`);
       }
-      console.log(`[Socket Disconnected]: Socket ID ${socket.id}`);
     });
   });
 

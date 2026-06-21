@@ -522,6 +522,7 @@ export class TaskService {
   where: { id: taskId },
   include: {
     labels: true,
+    project: true,
   },
 });
 
@@ -534,6 +535,14 @@ export class TaskService {
     if (!canAccess) {
       throw new Error('Permission denied: not a member of this workspace');
     }
+
+    await ActivityService.log({
+      workspaceId: task.project.workspaceId,
+      taskId,
+      userId,
+      action: 'task_deleted',
+      details: { title: task.title },
+    });
 
     // Delete task (cascades to comments)
     await prisma.task.delete({

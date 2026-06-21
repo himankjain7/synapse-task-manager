@@ -54,12 +54,6 @@ router.use(requireAuth);
  */
 router.post(
   '/',
-  (req, _res, next) => {
-    console.log('PROJECT CREATE REQUEST');
-    console.log('Params:', req.params);
-    console.log('Body:', req.body);
-    next();
-  },
   validateBody,
   validateRequired(['name']),
   sanitizeFields(['name', 'description']),

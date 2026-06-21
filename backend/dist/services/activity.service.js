@@ -10,7 +10,7 @@ class ActivityService {
         await db_1.default.activityLog.create({
             data: {
                 workspaceId: params.workspaceId,
-                taskId: params.taskId,
+                taskId: params.taskId ?? null,
                 userId: params.userId,
                 action: params.action,
                 details: params.details,

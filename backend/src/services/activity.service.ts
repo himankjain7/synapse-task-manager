@@ -4,7 +4,7 @@ import { ActivityLogWithUser } from '../models';
 export class ActivityService {
   static async log(params: {
     workspaceId: string;
-    taskId: string;
+    taskId?: string | null;
     userId: string;
     action: string;
     details: Record<string, unknown>;
@@ -12,7 +12,7 @@ export class ActivityService {
     await prisma.activityLog.create({
       data: {
         workspaceId: params.workspaceId,
-        taskId: params.taskId,
+        taskId: params.taskId ?? null,
         userId: params.userId,
         action: params.action,
         details: params.details as any,

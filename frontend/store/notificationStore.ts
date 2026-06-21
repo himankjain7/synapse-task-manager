@@ -12,6 +12,11 @@ export interface AppNotification {
   workspaceId?: string;
   read: boolean;
   createdAt: string;
+  actor?: {
+    id: string;
+    name: string;
+    avatar: string | null;
+  };
 }
 
 interface NotificationState {
@@ -31,11 +36,12 @@ export const useNotificationStore = create<NotificationState>()(
       badgeCount: 0,
       setNotifications: (notifications) =>
         set({ notifications, badgeCount: notifications.filter((n) => !n.read).length }),
-      addNotification: (notification) =>
+      addNotification: (notification) => {
         set((state) => ({
           notifications: [notification, ...state.notifications],
           badgeCount: state.badgeCount + 1,
-        })),
+        }));
+      },
       markAsRead: (id) =>
         set((state) => ({
           notifications: state.notifications.map((n) =>

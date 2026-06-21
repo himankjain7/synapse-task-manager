@@ -39,6 +39,9 @@ export default function ProtectedLayout() {
       <Stack.Screen name="projects/[projectId]/tasks/create" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
       <Stack.Screen name="tasks/[id]/index" options={{ headerShown: false }} />
       <Stack.Screen name="notifications/index" options={{ headerShown: false }} />
+      <Stack.Screen name="calendar/index" options={{ headerShown: false }} />
+      <Stack.Screen name="search/index" options={{ headerShown: false }} />
+      <Stack.Screen name="settings/index" options={{ headerShown: false }} />
     </Stack>
   );
 }

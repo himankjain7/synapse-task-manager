@@ -3,6 +3,10 @@ import { WorkspaceService } from '../services/workspace.service';
 import { asyncHandler } from '../middleware/error.middleware';
 import { APIError, ForbiddenError, NotFoundError } from '../middleware/error.middleware';
 import { CreateWorkspaceRequest, UpdateWorkspaceRequest, WorkspaceMemberRole } from '../models';
+import prisma from '../config/db';
+import { getIo } from '../socket';
+import { v4 as uuidv4 } from 'uuid';
+import { makeNotif, getUserInfo } from '../utils/notification';
 
 /**
  * Workspace Controller
@@ -43,6 +47,15 @@ export class WorkspaceController {
     const data: CreateWorkspaceRequest = req.body;
 
     const workspace = await WorkspaceService.createWorkspace(userId, data);
+
+    if (workspace) {
+      const io = getIo();
+      const actor = await getUserInfo(userId);
+      const payload = makeNotif(uuidv4(), 'workspace_created', 'Workspace Created',
+        `${actor.name} created workspace "${workspace.name}"`,
+        actor, undefined, undefined, workspace.id);
+      io.to(`user:${userId}`).emit('notification', payload);
+    }
 
     res.status(201).json({
       success: true,
@@ -230,6 +243,17 @@ export class WorkspaceController {
 
     const member = await WorkspaceService.addWorkspaceMember(id, userId, req.body);
 
+    if (member) {
+      const io = getIo();
+      const actor = await getUserInfo(userId);
+      const targetUserName = member.user?.name || member.userId;
+      const payload = makeNotif(uuidv4(), 'member_added', 'Member Added',
+        `${actor.name} added ${targetUserName} to workspace`,
+        actor, undefined, undefined, id);
+      io.to(`user:${member.userId}`).emit('notification', payload);
+      io.to(`workspace:${id}`).emit('member:added', { member });
+    }
+
     res.status(201).json({
       success: true,
       data: member,
@@ -343,7 +367,19 @@ export class WorkspaceController {
       throw new ForbiddenError('Only owner can remove members');
     }
 
+    const targetUser = await prisma.user.findUnique({ where: { id: memberId }, select: { name: true } });
+
     await WorkspaceService.removeWorkspaceMember(id, userId, memberId);
+
+    if (targetUser) {
+      const io = getIo();
+      const actor = await getUserInfo(userId);
+      const payload = makeNotif(uuidv4(), 'member_removed', 'Member Removed',
+        `${actor.name} removed ${targetUser.name} from workspace`,
+        actor, undefined, undefined, id);
+      io.to(`workspace:${id}`).emit('notification', payload);
+      io.to(`workspace:${id}`).emit('member:removed', { memberId });
+    }
 
     res.status(204).send();
   });

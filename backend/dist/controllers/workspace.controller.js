@@ -1,10 +1,17 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WorkspaceController = void 0;
 const workspace_service_1 = require("../services/workspace.service");
 const error_middleware_1 = require("../middleware/error.middleware");
 const error_middleware_2 = require("../middleware/error.middleware");
 const models_1 = require("../models");
+const db_1 = __importDefault(require("../config/db"));
+const socket_1 = require("../socket");
+const uuid_1 = require("uuid");
+const notification_1 = require("../utils/notification");
 /**
  * Workspace Controller
  *
@@ -42,6 +49,12 @@ class WorkspaceController {
         }
         const data = req.body;
         const workspace = await workspace_service_1.WorkspaceService.createWorkspace(userId, data);
+        if (workspace) {
+            const io = (0, socket_1.getIo)();
+            const actor = await (0, notification_1.getUserInfo)(userId);
+            const payload = (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'workspace_created', 'Workspace Created', `${actor.name} created workspace "${workspace.name}"`, actor, undefined, undefined, workspace.id);
+            io.to(`user:${userId}`).emit('notification', payload);
+        }
         res.status(201).json({
             success: true,
             data: workspace,
@@ -204,6 +217,14 @@ class WorkspaceController {
             throw new error_middleware_2.ForbiddenError('Only owner or admin can add members');
         }
         const member = await workspace_service_1.WorkspaceService.addWorkspaceMember(id, userId, req.body);
+        if (member) {
+            const io = (0, socket_1.getIo)();
+            const actor = await (0, notification_1.getUserInfo)(userId);
+            const targetUserName = member.user?.name || member.userId;
+            const payload = (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'member_added', 'Member Added', `${actor.name} added ${targetUserName} to workspace`, actor, undefined, undefined, id);
+            io.to(`user:${member.userId}`).emit('notification', payload);
+            io.to(`workspace:${id}`).emit('member:added', { member });
+        }
         res.status(201).json({
             success: true,
             data: member,
@@ -302,7 +323,15 @@ class WorkspaceController {
         if (role !== models_1.WorkspaceMemberRole.OWNER) {
             throw new error_middleware_2.ForbiddenError('Only owner can remove members');
         }
+        const targetUser = await db_1.default.user.findUnique({ where: { id: memberId }, select: { name: true } });
         await workspace_service_1.WorkspaceService.removeWorkspaceMember(id, userId, memberId);
+        if (targetUser) {
+            const io = (0, socket_1.getIo)();
+            const actor = await (0, notification_1.getUserInfo)(userId);
+            const payload = (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'member_removed', 'Member Removed', `${actor.name} removed ${targetUser.name} from workspace`, actor, undefined, undefined, id);
+            io.to(`workspace:${id}`).emit('notification', payload);
+            io.to(`workspace:${id}`).emit('member:removed', { memberId });
+        }
         res.status(204).send();
     });
     /**

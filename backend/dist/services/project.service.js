@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProjectService = void 0;
 const db_1 = __importDefault(require("../config/db"));
 const workspace_service_1 = require("./workspace.service");
+const activity_service_1 = require("./activity.service");
 const models_1 = require("../models");
 /**
  * Project Business Logic Service
@@ -64,6 +65,13 @@ class ProjectService {
                 status: models_1.ProjectStatus.ACTIVE,
                 createdAt: new Date(),
             },
+        });
+        await activity_service_1.ActivityService.log({
+            workspaceId,
+            taskId: null,
+            userId,
+            action: 'project_created',
+            details: { name: project.name },
         });
         return {
             ...project,
@@ -301,12 +309,20 @@ class ProjectService {
             }
         }
         // Archive project
-        await db_1.default.project.update({
+        const updated = await db_1.default.project.update({
             where: { id: projectId },
             data: {
                 status: models_1.ProjectStatus.ARCHIVED,
             },
         });
+        await activity_service_1.ActivityService.log({
+            workspaceId: project.workspaceId,
+            taskId: null,
+            userId,
+            action: 'project_archived',
+            details: { name: project.name },
+        });
+        return { ...updated, status: updated.status };
     }
     /**
      * Unarchive project
@@ -334,12 +350,20 @@ class ProjectService {
             }
         }
         // Unarchive project
-        await db_1.default.project.update({
+        const updated = await db_1.default.project.update({
             where: { id: projectId },
             data: {
                 status: models_1.ProjectStatus.ACTIVE,
             },
         });
+        await activity_service_1.ActivityService.log({
+            workspaceId: project.workspaceId,
+            taskId: null,
+            userId,
+            action: 'project_unarchived',
+            details: { name: project.name },
+        });
+        return { ...updated, status: updated.status };
     }
     /**
      * Delete project

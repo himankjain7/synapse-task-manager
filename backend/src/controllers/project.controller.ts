@@ -4,6 +4,9 @@ import { WorkspaceService } from '../services/workspace.service';
 import { asyncHandler } from '../middleware/error.middleware';
 import { APIError, ForbiddenError, NotFoundError } from '../middleware/error.middleware';
 import { CreateProjectRequest, UpdateProjectRequest, ProjectStatus } from '../models';
+import { getIo } from '../socket';
+import { v4 as uuidv4 } from 'uuid';
+import { makeNotif, getUserInfo } from '../utils/notification';
 
 /**
  * Project Controller
@@ -51,6 +54,16 @@ export class ProjectController {
 
     const data: CreateProjectRequest = req.body;
     const project = await ProjectService.createProject(workspaceId, userId, data);
+
+    if (project) {
+      const io = getIo();
+      const actor = await getUserInfo(userId);
+      const payload = makeNotif(uuidv4(), 'project_created', 'Project Created',
+        `${actor.name} created project "${project.name}"`,
+        actor, undefined, project.id, workspaceId);
+      io.to(`workspace:${workspaceId}`).emit('notification', payload);
+      io.to(`workspace:${workspaceId}`).emit('project:created', { project });
+    }
 
     res.status(201).json({
       success: true,
@@ -187,6 +200,16 @@ export class ProjectController {
 
     const project = await ProjectService.archiveProject(id, userId);
 
+    if (project) {
+      const io = getIo();
+      const actor = await getUserInfo(userId);
+      const payload = makeNotif(uuidv4(), 'project_archived', 'Project Archived',
+        `${actor.name} archived project "${project.name}"`,
+        actor, undefined, project.id, project.workspaceId);
+      io.to(`workspace:${project.workspaceId}`).emit('notification', payload);
+      io.to(`project:${project.id}`).emit('project:archived', { project });
+    }
+
     res.status(200).json({
       success: true,
       data: project,
@@ -211,6 +234,16 @@ export class ProjectController {
     }
 
     const project = await ProjectService.unarchiveProject(id, userId);
+
+    if (project) {
+      const io = getIo();
+      const actor = await getUserInfo(userId);
+      const payload = makeNotif(uuidv4(), 'project_unarchived', 'Project Unarchived',
+        `${actor.name} unarchived project "${project.name}"`,
+        actor, undefined, project.id, project.workspaceId);
+      io.to(`workspace:${project.workspaceId}`).emit('notification', payload);
+      io.to(`project:${project.id}`).emit('project:unarchived', { project });
+    }
 
     res.status(200).json({
       success: true,

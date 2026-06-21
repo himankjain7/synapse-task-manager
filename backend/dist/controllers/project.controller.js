@@ -5,6 +5,9 @@ const project_service_1 = require("../services/project.service");
 const workspace_service_1 = require("../services/workspace.service");
 const error_middleware_1 = require("../middleware/error.middleware");
 const error_middleware_2 = require("../middleware/error.middleware");
+const socket_1 = require("../socket");
+const uuid_1 = require("uuid");
+const notification_1 = require("../utils/notification");
 /**
  * Project Controller
  *
@@ -48,6 +51,13 @@ class ProjectController {
         }
         const data = req.body;
         const project = await project_service_1.ProjectService.createProject(workspaceId, userId, data);
+        if (project) {
+            const io = (0, socket_1.getIo)();
+            const actor = await (0, notification_1.getUserInfo)(userId);
+            const payload = (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'project_created', 'Project Created', `${actor.name} created project "${project.name}"`, actor, undefined, project.id, workspaceId);
+            io.to(`workspace:${workspaceId}`).emit('notification', payload);
+            io.to(`workspace:${workspaceId}`).emit('project:created', { project });
+        }
         res.status(201).json({
             success: true,
             data: project,
@@ -161,6 +171,13 @@ class ProjectController {
             throw new error_middleware_2.APIError(401, 'UNAUTHORIZED', 'Authentication required');
         }
         const project = await project_service_1.ProjectService.archiveProject(id, userId);
+        if (project) {
+            const io = (0, socket_1.getIo)();
+            const actor = await (0, notification_1.getUserInfo)(userId);
+            const payload = (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'project_archived', 'Project Archived', `${actor.name} archived project "${project.name}"`, actor, undefined, project.id, project.workspaceId);
+            io.to(`workspace:${project.workspaceId}`).emit('notification', payload);
+            io.to(`project:${project.id}`).emit('project:archived', { project });
+        }
         res.status(200).json({
             success: true,
             data: project,
@@ -182,6 +199,13 @@ class ProjectController {
             throw new error_middleware_2.APIError(401, 'UNAUTHORIZED', 'Authentication required');
         }
         const project = await project_service_1.ProjectService.unarchiveProject(id, userId);
+        if (project) {
+            const io = (0, socket_1.getIo)();
+            const actor = await (0, notification_1.getUserInfo)(userId);
+            const payload = (0, notification_1.makeNotif)((0, uuid_1.v4)(), 'project_unarchived', 'Project Unarchived', `${actor.name} unarchived project "${project.name}"`, actor, undefined, project.id, project.workspaceId);
+            io.to(`workspace:${project.workspaceId}`).emit('notification', payload);
+            io.to(`project:${project.id}`).emit('project:unarchived', { project });
+        }
         res.status(200).json({
             success: true,
             data: project,

@@ -14,9 +14,11 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useTheme } from '../../../../hooks/useTheme';
 import { useTask, useUpdateTask, useDeleteTask, useTaskComments, useCreateComment, useDeleteComment, useLabels, useCreateLabel, useAssignLabel, useRemoveLabel, useTaskActivity } from '../../../../hooks/useTasks';
+import { useTaskAttachments, useUploadAttachment, useDeleteAttachment } from '../../../../hooks/useAttachments';
 import { useMembers } from '../../../../hooks/useWorkspaces';
 import { useToastStore } from '../../../../store/toastStore';
 import { Text } from '../../../../components/typography/Text';
@@ -111,6 +113,10 @@ export default function TaskDetailScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
   const [customPickerDate, setCustomPickerDate] = useState(new Date());
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+  const { data: attachments, isLoading: attachmentsLoading, refetch: refetchAttachments } = useTaskAttachments(id);
+  const { mutateAsync: uploadAttachment, isPending: uploading } = useUploadAttachment();
+  const { mutateAsync: deleteAttachment } = useDeleteAttachment();
 
   const comments = commentsData?.data ?? [];
   const labels = labelsData ?? [];
@@ -420,6 +426,84 @@ export default function TaskDetailScreen() {
             <Text variant="bodySmall" color="tertiary">No labels</Text>
           )}
 
+          {/* Attachments */}
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          <View style={styles.sectionRow}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>ATTACHMENTS ({attachments?.length || 0})</Text>
+            <TouchableOpacity onPress={async () => {
+              try {
+                console.log('[UPLOAD] ===== BEGIN UPLOAD FLOW ====');
+                const pickResult = await DocumentPicker.getDocumentAsync({ type: ['image/*', 'application/pdf', 'text/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/csv'], copyToCacheDirectory: false });
+                console.log('[UPLOAD] DocumentPicker result:', JSON.stringify(pickResult));
+                if (pickResult.canceled || !pickResult.assets?.[0]) {
+                  console.log('[UPLOAD] No file selected or cancelled');
+                  return;
+                }
+                const file = pickResult.assets[0];
+                console.log('[UPLOAD] Asset URI:', file.uri);
+                console.log('[UPLOAD] Asset name:', file.name);
+                console.log('[UPLOAD] Asset mimeType:', file.mimeType);
+                const formData = new FormData();
+                const filePart = { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' };
+                console.log('[UPLOAD] Appending to FormData:', JSON.stringify(filePart));
+                formData.append('file', filePart as any);
+                console.log('[UPLOAD] FormData._parts:', JSON.stringify((formData as any)._parts));
+                triggerHaptic('light');
+                console.log('[UPLOAD] Calling uploadAttachment...');
+                await uploadAttachment({ taskId: id!, file: formData });
+                console.log('[UPLOAD] Upload succeeded');
+                refetchAttachments();
+              } catch (err: any) {
+                console.log('[UPLOAD] ERROR caught in handler');
+                console.log('[UPLOAD] error.message:', err?.message);
+                console.log('[UPLOAD] error.response:', err?.response);
+                console.log('[UPLOAD] error.response?.status:', err?.response?.status);
+                console.log('[UPLOAD] error.response?.data:', err?.response?.data);
+                console.log('[UPLOAD] error.request:', err?.request?.toString ? err?.request?.toString() : err?.request);
+                console.log('[UPLOAD] error.config:', err?.config ? JSON.stringify(err.config) : 'no config');
+                triggerHaptic('error');
+                showToast('Upload failed: ' + (err?.message || 'unknown'), 'error');
+              }
+            }}>
+              <Text variant="caption" color="primary">Upload</Text>
+            </TouchableOpacity>
+          </View>
+          {attachmentsLoading ? (
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+          ) : attachments && attachments.length > 0 ? (
+            attachments.map((att) => (
+              <View key={att.id} style={[styles.attachmentRow, { borderBottomColor: theme.colors.border }]}>
+                <View style={styles.attachmentIcon}>
+                  <Text style={{ fontSize: 20 }}>
+                    {att.mimeType.startsWith('image/') ? '🖼️' : att.mimeType === 'application/pdf' ? '📄' : '📎'}
+                  </Text>
+                </View>
+                <View style={styles.attachmentInfo}>
+                  <Text style={[styles.attachmentName, { color: theme.colors.text.primary }]} numberOfLines={1}>{att.fileName}</Text>
+                  <Text style={[styles.attachmentMeta, { color: theme.colors.text.tertiary }]}>
+                    {(att.size / 1024).toFixed(1)} KB · {att.uploaderName}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.attachmentDelete, { backgroundColor: theme.colors.dangerLight }]}
+                  onPress={() => {
+                    Alert.alert('Delete Attachment', 'Are you sure?', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Delete', style: 'destructive', onPress: async () => {
+                        try { await deleteAttachment({ taskId: id!, id: att.id }); refetchAttachments(); }
+                        catch { showToast('Failed to delete', 'error'); }
+                      }},
+                    ]);
+                  }}
+                >
+                  <Text style={{ color: theme.colors.danger, fontSize: 12, fontWeight: '600' }}>Del</Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          ) : (
+            <Text variant="bodySmall" color="tertiary">No attachments</Text>
+          )}
+
           {/* Activity Timeline */}
           <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary, marginTop: 20 }]}>ACTIVITY</Text>
           {activityData && activityData.length > 0 ? (
@@ -699,6 +783,12 @@ const styles = StyleSheet.create({
   createLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 12, borderBottomWidth: 1, marginBottom: 4 },
   createLabelInput: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14 },
   createLabelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  attachmentRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 0.5, gap: 10 },
+  attachmentIcon: { width: 36, height: 36, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  attachmentInfo: { flex: 1, gap: 2 },
+  attachmentName: { fontSize: 13, fontWeight: '500' },
+  attachmentMeta: { fontSize: 11 },
+  attachmentDelete: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginBottom: 12 },
   editBtnCancel: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
   editBtnSave: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },

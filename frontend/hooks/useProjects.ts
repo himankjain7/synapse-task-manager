@@ -43,6 +43,7 @@ export function useCreateProject() {
           variables.workspaceId
         ),
       });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -65,6 +66,7 @@ export function useUpdateProject() {
       queryClient.invalidateQueries({
         queryKey: QueryKeys.projects.all,
       });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -85,6 +87,7 @@ export function useDeleteProject() {
       queryClient.invalidateQueries({
         queryKey: QueryKeys.projects.all,
       });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }

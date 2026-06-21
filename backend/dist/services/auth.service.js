@@ -259,6 +259,26 @@ class AuthService {
      * @returns Bcrypt hash of the password (includes salt and cost factor)
      * @throws Error if hashing fails
      */
+    static async updateProfile(userId, name, avatarUrl) {
+        const user = await db_1.default.user.update({
+            where: { id: userId },
+            data: { name: name.trim(), avatarUrl: avatarUrl || null, updatedAt: new Date() },
+        });
+        return this.userToResponse(user);
+    }
+    static async changePassword(userId, currentPassword, newPassword) {
+        const user = await db_1.default.user.findUnique({ where: { id: userId } });
+        if (!user || !user.passwordHash)
+            throw new Error('User not found');
+        const isValid = await this.comparePassword(currentPassword, user.passwordHash);
+        if (!isValid)
+            throw new Error('Current password is incorrect');
+        const passwordHash = await this.hashPassword(newPassword);
+        await db_1.default.user.update({
+            where: { id: userId },
+            data: { passwordHash, updatedAt: new Date() },
+        });
+    }
     static async hashPassword(password) {
         try {
             // Bcrypt automatically generates a unique salt and embeds it in the hash

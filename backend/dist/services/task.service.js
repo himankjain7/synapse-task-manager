@@ -444,6 +444,7 @@ class TaskService {
             where: { id: taskId },
             include: {
                 labels: true,
+                project: true,
             },
         });
         if (!task) {
@@ -454,6 +455,13 @@ class TaskService {
         if (!canAccess) {
             throw new Error('Permission denied: not a member of this workspace');
         }
+        await activity_service_1.ActivityService.log({
+            workspaceId: task.project.workspaceId,
+            taskId,
+            userId,
+            action: 'task_deleted',
+            details: { title: task.title },
+        });
         // Delete task (cascades to comments)
         await db_1.default.task.delete({
             where: { id: taskId },

@@ -14,6 +14,7 @@ import { Heading } from '../../../components/typography/Heading';
 import { EmptyState } from '../../../components/feedback/EmptyState';
 import { formatRelativeTime } from '../../../utils/date';
 import { triggerHaptic } from '../../../utils/haptics';
+import { getInitials } from '../../../utils/formatting';
 
 const TYPE_ICONS: Record<string, string> = {
   task_assigned: '📋',
@@ -44,7 +45,10 @@ export default function NotificationsScreen() {
     }
   }, [markAsRead, router]);
 
-  const renderNotification = useCallback(({ item }: { item: AppNotification }) => (
+  const renderNotification = useCallback(({ item }: { item: AppNotification }) => {
+    const actorName = item.actor?.name || 'Unknown';
+    const actorAvatar = item.actor?.avatar;
+    return (
     <TouchableOpacity
       style={[
         styles.notificationRow,
@@ -53,8 +57,8 @@ export default function NotificationsScreen() {
       onPress={() => handlePress(item)}
       activeOpacity={0.7}
     >
-      <View style={styles.notificationIcon}>
-        <Text style={styles.iconEmoji}>{TYPE_ICONS[item.type] || '🔔'}</Text>
+      <View style={[styles.notificationAvatar, { backgroundColor: theme.colors.primaryLight }]}>
+        <Text style={[styles.notificationAvatarText, { color: theme.colors.primary }]}>{getInitials(actorName)}</Text>
       </View>
       <View style={styles.notificationBody}>
         <View style={styles.notificationHeader}>
@@ -65,7 +69,8 @@ export default function NotificationsScreen() {
       </View>
       {!item.read && <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} />}
     </TouchableOpacity>
-  ), [theme, handlePress]);
+    );
+  }, [theme, handlePress]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -116,8 +121,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     gap: 12,
   },
-  notificationIcon: { width: 36, alignItems: 'center' },
-  iconEmoji: { fontSize: 18 },
+  notificationAvatar: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  notificationAvatarText: { fontSize: 13, fontWeight: '600' },
   notificationBody: { flex: 1, gap: 2 },
   notificationHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   unreadDot: { width: 10, height: 10, borderRadius: 5 },

@@ -28,6 +28,13 @@ export const QueryKeys = {
     unread: ['notifications', 'unread'] as const,
     list: ['notifications', 'list'] as const,
   },
+
+  analytics: {
+    all: ['analytics'] as const,
+    workspace: (id: string) => ['analytics', 'workspace', id] as const,
+    project: (id: string) => ['analytics', 'project', id] as const,
+    user: ['analytics', 'user'] as const,
+  },
 } as const;
 
 export type AppQueryKeys = typeof QueryKeys;

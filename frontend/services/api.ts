@@ -6,9 +6,6 @@ import { transformError } from '../utils/error';
 export const api = axios.create({
   baseURL: Config.API_URL,
   timeout: Config.API_TIMEOUT,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 let isLoggingOut = false;
@@ -30,13 +27,21 @@ api.interceptors.request.use(
 // Response Interceptor: Transform errors & handle 401
 api.interceptors.response.use(
   (response) => {
-    console.log('API SUCCESS:', response.config.url, response.data);
+    console.log('[API] SUCCESS:', response.config?.method?.toUpperCase(), response.config?.url, 'status:', response.status);
     return response;
   },
   (error) => {
-    console.log('API ERROR URL:', error.config?.url);
-    console.log('API ERROR STATUS:', error.response?.status);
-    console.log('API ERROR DATA:', error.response?.data);
+    console.log('[API] ERROR URL:', error.config?.url);
+    console.log('[API] ERROR STATUS:', error.response?.status);
+    console.log('[API] ERROR DATA:', error.response?.data);
+    console.log('[API] ERROR MESSAGE:', error.message);
+    console.log('[API] ERROR CODE:', error.code);
+    console.log('[API] HAS RESPONSE:', !!error.response);
+    console.log('[API] HAS REQUEST:', !!error.request);
+    if (error.request) {
+      console.log('[API] REQUEST method:', error.request.method);
+      console.log('[API] REQUEST url:', error.request.url);
+    }
 
     return Promise.reject(transformError(error));
   }

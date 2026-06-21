@@ -17,6 +17,9 @@ const task_routes_1 = __importDefault(require("./routes/task.routes"));
 const comment_routes_1 = __importDefault(require("./routes/comment.routes"));
 const label_routes_1 = __importDefault(require("./routes/label.routes"));
 const standalone_task_routes_1 = __importDefault(require("./routes/standalone-task.routes"));
+const analytics_routes_1 = __importDefault(require("./routes/analytics.routes"));
+const search_routes_1 = __importDefault(require("./routes/search.routes"));
+const attachment_routes_1 = __importDefault(require("./routes/attachment.routes"));
 // Import Middlewares
 const error_middleware_1 = require("./middleware/error.middleware");
 const socket_1 = require("./socket");
@@ -42,6 +45,12 @@ app.use('/api/v1/tasks', standalone_task_routes_1.default);
 app.use('/api/v1/tasks/:taskId/comments', comment_routes_1.default);
 app.use('/api/v1/projects/:projectId', label_routes_1.default);
 app.use('/api/v1/tasks', label_routes_1.default);
+// Mount Analytics, Search, and Attachment routes
+app.use('/api/v1/analytics', analytics_routes_1.default);
+app.use('/api/v1/search', search_routes_1.default);
+app.use('/api/v1/tasks/:taskId/attachments', attachment_routes_1.default);
+// Serve static uploads
+app.use('/uploads', express_1.default.static('uploads'));
 // Global Exception Interceptor Middleware (must be registered last)
 app.use(error_middleware_1.errorHandler);
 // Instantiate HTTP server wrapping Express

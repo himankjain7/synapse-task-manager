@@ -85,7 +85,6 @@ router.post(
   validateBody,
   validateRequired(['email', 'password']),
   validateEmailField('email'),
-  validatePasswordField('password'),
   AuthController.login
 );
 
@@ -200,5 +199,8 @@ router.get('/me', requireAuth, AuthController.getMe);
  * }
  */
 router.post('/verify-token', AuthController.verifyToken);
+
+router.patch('/profile', requireAuth, AuthController.updateProfile);
+router.post('/change-password', requireAuth, AuthController.changePassword);
 
 export default router;

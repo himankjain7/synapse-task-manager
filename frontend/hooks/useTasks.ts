@@ -33,6 +33,7 @@ export function useCreateTask() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.byProject(variables.projectId) });
       queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -47,6 +48,7 @@ export function useUpdateTask() {
       queryClient.invalidateQueries({ queryKey: ['task-activity', variables.id] });
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
       queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -58,6 +60,7 @@ export function useDeleteTask() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
       queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -69,6 +72,7 @@ export function useReorderTasks() {
       taskApi.reorder(projectId, tasks.map(t => ({ ...t, status: t.status as any }))),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -89,6 +93,7 @@ export function useCreateComment() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.comments(variables.taskId) });
       queryClient.invalidateQueries({ queryKey: ['task-activity', variables.taskId] });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -101,6 +106,7 @@ export function useDeleteComment() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.comments(variables.taskId) });
       queryClient.invalidateQueries({ queryKey: ['task-activity', variables.taskId] });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -120,6 +126,7 @@ export function useCreateLabel() {
       taskApi.createLabel(projectId, input),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['labels', 'project', variables.projectId] });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -131,6 +138,7 @@ export function useDeleteLabel() {
       taskApi.deleteLabel(projectId, id),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['labels', 'project', variables.projectId] });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -143,6 +151,7 @@ export function useAssignLabel() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
       queryClient.invalidateQueries({ queryKey: ['task-activity', variables.taskId] });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -155,6 +164,7 @@ export function useRemoveLabel() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
       queryClient.invalidateQueries({ queryKey: ['task-activity', variables.taskId] });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
