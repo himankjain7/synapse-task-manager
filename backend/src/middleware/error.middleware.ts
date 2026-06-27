@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ErrorCode } from '../models';
+import { sendError, sendSuccess } from '../utils/response';
 
 /**
  * Custom API Error Class
@@ -100,43 +101,17 @@ export class RateLimitError extends APIError {
 }
 
 /**
- * Global Error Handler Middleware
- *
- * Catches all errors thrown by routes and formats them consistently.
- * Should be the last middleware in the Express app.
- *
- * Error handling flow:
- * 1. Check if error is APIError instance
- * 2. If yes, use its status code and message
- * 3. If no, log error and return generic 500
- * 4. Send error response with consistent format
- * 5. Never expose internal error details in production
- *
- * Usage:
- * app.use(errorHandler);
- */
-// Duplicate errorHandler removed; using the comprehensive version defined later in the file.
-
-
-/**
  * 404 Not Found Handler
  *
  * Handles requests to non-existent routes.
  * Should be placed after all other routes.
- *
- * Usage:
- * app.use(notFoundHandler);
  */
 export const notFoundHandler = (
   req: Request,
   res: Response,
   _next: NextFunction
 ): void => {
-  res.status(404).json({
-    code: ErrorCode.NOT_FOUND,
-    message: `Route not found: ${req.method} ${req.path}`,
-    timestamp: new Date(),
-  });
+  sendError(res, 404, `Route not found: ${req.method} ${req.path}`);
 };
 
 /**
@@ -144,9 +119,6 @@ export const notFoundHandler = (
  *
  * Wraps async route handlers to catch errors and pass to error handler.
  * Prevents "unhandled rejection" errors.
- *
- * Usage:
- * router.post('/users', asyncHandler(controller.createUser));
  *
  * @param handler - Async route handler function
  * @returns Wrapped handler that catches errors
@@ -161,12 +133,12 @@ export const asyncHandler =
  * Safe Route Wrapper with Auto-Response
  *
  * Wraps route handler and automatically sends JSON response.
- * Useful for reducing boilerplate in controllers.
+ * Reduces boilerplate in controllers.
  *
  * Usage:
  * router.post('/users', safeRoute(async (req, res) => {
  *   const user = await UserService.createUser(req.body);
- *   return { success: true, data: user };
+ *   return user;
  * }));
  *
  * @param handler - Route handler function
@@ -178,17 +150,11 @@ export const safeRoute =
     try {
       const result = await handler(req, res);
 
-      // If handler already sent response, don't send again
       if (res.headersSent) {
         return;
       }
 
-      // Send result as JSON
-      res.status(200).json({
-        success: true,
-        data: result,
-        timestamp: new Date(),
-      });
+      sendSuccess(res, result);
     } catch (error) {
       next(error);
     }
@@ -198,12 +164,6 @@ export const safeRoute =
  * Safe Route Wrapper with Status Code
  *
  * Like safeRoute but allows specifying HTTP status code.
- *
- * Usage:
- * router.post('/users', safeRouteWithStatus(201, async (req, res) => {
- *   const user = await UserService.createUser(req.body);
- *   return user;
- * }));
  *
  * @param statusCode - HTTP status code to return
  * @param handler - Route handler function
@@ -219,11 +179,7 @@ export const safeRouteWithStatus =
         return;
       }
 
-      res.status(statusCode).json({
-        success: true,
-        data: result,
-        timestamp: new Date(),
-      });
+      sendSuccess(res, result, statusCode);
     } catch (error) {
       next(error);
     }
@@ -234,6 +190,7 @@ import { Prisma } from '@prisma/client';
 /**
  * Global Error Handler Middleware
  * Intercepts errors thrown down the request stack, providing unified JSON formatting.
+ * Always returns the standard envelope: { success, data, error, timestamp }
  */
 export const errorHandler = (
   err: Error,
@@ -243,47 +200,34 @@ export const errorHandler = (
 ) => {
   // 1. Zod Request Schema Validation Errors
   if (err instanceof ZodError) {
-    return res.status(400).json({
-      error: 'Validation failed',
-      details: err.errors.map((issue) => ({
-        path: issue.path.join('.'),
-        message: issue.message,
-      })),
-    });
+    return sendError(res, 400, `Validation failed: ${err.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`);
   }
 
   // 2. Prisma Database Constraint Failures
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     switch (err.code) {
-      case 'P2002': { // Unique constraint violation (e.g. duplicate email)
+      case 'P2002': {
         const target = (err.meta?.target as string[]) || [];
-        return res.status(409).json({
-          error: `Record duplicate found`,
-          details: `Field constraint violation on: ${target.join(', ')}`,
-        });
+        return sendError(res, 409, `Record duplicate found: field constraint violation on ${target.join(', ')}`);
       }
-      case 'P2003': { // Foreign key constraint violation
-        return res.status(400).json({
-          error: 'Foreign key constraint failed',
-          details: 'The referenced parent record does not exist or has deletion restrictions.',
-        });
+      case 'P2003': {
+        return sendError(res, 400, 'Foreign key constraint failed: the referenced parent record does not exist or has deletion restrictions.');
       }
-      case 'P2025': { // Record to update/delete not found
-        return res.status(404).json({
-          error: 'Record not found',
-          details: err.message || 'The requested database record does not exist.',
-        });
+      case 'P2025': {
+        return sendError(res, 404, err.message || 'The requested database record does not exist.');
       }
       default:
         break;
     }
   }
 
+  // 3. Our custom API errors
+  if (err instanceof APIError) {
+    return sendError(res, err.statusCode, err.message);
+  }
+
   // Log unknown internal errors for debugging
   console.error('[Unhandled Internal Exception]:', err);
 
-  return res.status(500).json({
-    error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'production' ? 'A server error occurred.' : err.message,
-  });
+  return sendError(res, 500, process.env.NODE_ENV === 'production' ? 'A server error occurred.' : err.message);
 };

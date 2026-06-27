@@ -21,6 +21,8 @@ import { Heading } from '../../../../components/typography/Heading';
 import { LoadingView } from '../../../../components/feedback/LoadingView';
 import { ErrorState } from '../../../../components/feedback/ErrorState';
 import { EmptyState } from '../../../../components/feedback/EmptyState';
+import { FadeIn } from '../../../../components/animations/FadeIn';
+import { PressScale } from '../../../../components/animations/PressScale';
 import { getInitials } from '../../../../utils/formatting';
 import { formatDate, formatRelativeTime } from '../../../../utils/date';
 import { triggerHaptic } from '../../../../utils/haptics';
@@ -113,7 +115,8 @@ export default function WorkspaceDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.heroSection}>
+        <FadeIn spring>
+          <View style={styles.heroSection}>
           <View style={[styles.heroAvatar, { backgroundColor: theme.colors.primaryLight }]}>
             <Text style={[styles.heroAvatarText, { color: theme.colors.primary }]}>
               {getInitials(workspace.name)}
@@ -130,47 +133,56 @@ export default function WorkspaceDetailScreen() {
           </Text>
         </View>
 
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <TouchableOpacity
-              onPress={() => {
-                triggerHaptic('light');
-                router.push(`/(protected)/workspaces/${id}/members`);
-              }}
-            >
-              <Text style={[styles.statValue, { color: theme.colors.primary }]}>View</Text>
-              <Text variant="caption" color="tertiary" style={styles.statLabel}>Members</Text>
-            </TouchableOpacity>
+          <View style={styles.statsRow}>
+            <PressScale lift style={{ flex: 1 }}>
+              <View style={[styles.statCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <TouchableOpacity
+                  onPress={() => {
+                    triggerHaptic('light');
+                    router.push(`/(protected)/workspaces/${id}/members`);
+                  }}
+                >
+                  <Text style={[styles.statValue, { color: theme.colors.primary }]}>View</Text>
+                  <Text variant="caption" color="tertiary" style={styles.statLabel}>Members</Text>
+                </TouchableOpacity>
+              </View>
+            </PressScale>
+            <PressScale lift style={{ flex: 1 }}>
+              <TouchableOpacity
+                style={[styles.statCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  triggerHaptic('light');
+                  router.push(`/(protected)/workspaces/${id}`);
+                }}
+              >
+                <Text style={[styles.statValue, { color: theme.colors.success }]}>
+                  {projectsData?.total ?? 0}
+                </Text>
+                <Text variant="caption" color="tertiary" style={styles.statLabel}>Projects</Text>
+              </TouchableOpacity>
+            </PressScale>
           </View>
-          <TouchableOpacity
-            style={[styles.statCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-            onPress={() => {
-              triggerHaptic('light');
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.statValue, { color: theme.colors.success }]}>
-              {projectsData?.total ?? 0}
-            </Text>
-            <Text variant="caption" color="tertiary" style={styles.statLabel}>Projects</Text>
-          </TouchableOpacity>
-        </View>
+
+        </FadeIn>
 
         {/* Projects Section */}
         <View style={styles.projectsSection}>
           <View style={styles.projectsSectionHeader}>
             <Heading level={4}>Projects</Heading>
-            {isOwner && (
-              <TouchableOpacity
-                onPress={() => {
-                  triggerHaptic('light');
-                  router.push(`/(protected)/projects/create?workspaceId=${id}`);
-                }}
-                style={[styles.createProjectButton, { backgroundColor: theme.colors.primary }]}
-              >
-                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '600' }}>+ New Project</Text>
-              </TouchableOpacity>
-            )}
+              {isOwner && (
+                <PressScale scaleTo={0.93}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      triggerHaptic('light');
+                      router.push(`/(protected)/projects/create?workspaceId=${id}`);
+                    }}
+                    style={[styles.createProjectButton, { backgroundColor: theme.colors.primary }]}
+                  >
+                    <Text style={{ color: theme.colors.text.onPrimary, fontSize: 12, fontWeight: '600' }}>+ New Project</Text>
+                  </TouchableOpacity>
+                </PressScale>
+              )}
           </View>
 
           {projectsLoading ? (
@@ -178,51 +190,51 @@ export default function WorkspaceDetailScreen() {
               <ActivityIndicator size="small" color={theme.colors.primary} />
             </View>
           ) : !projectsData || projectsData.data.length === 0 ? (
-            <View style={styles.emptyProjects}>
-              <Text variant="bodyMedium" color="tertiary">No projects yet</Text>
-              {isOwner && (
-                <TouchableOpacity
-                  onPress={() => router.push(`/(protected)/projects/create?workspaceId=${id}`)}
-                  style={{ marginTop: 8 }}
-                >
-                  <Text color="primary" weight="semibold">Create your first project</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            <EmptyState
+              emoji="projects"
+              title="No projects yet"
+              description="Create your first project to start tracking tasks."
+              actionLabel={isOwner ? 'Create Project' : undefined}
+              onAction={isOwner ? () => router.push(`/(protected)/projects/create?workspaceId=${id}`) : undefined}
+            />
           ) : (
             <View style={styles.projectList}>
-              {projectsData.data.map((project) => (
-                <TouchableOpacity
-                  key={project.id}
-                  style={[styles.projectCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                  onPress={() => {
-                    triggerHaptic('light');
-                    router.push(`/(protected)/projects/${project.id}?workspaceId=${id}`);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.projectIcon, { backgroundColor: project.color || theme.colors.primaryLight }]}>
-                    <Text style={styles.projectEmoji}>{project.icon || '📋'}</Text>
-                  </View>
-                  <View style={styles.projectInfo}>
-                    <Text weight="semibold">{project.name}</Text>
-                    {project.description && (
-                      <Text variant="bodySmall" color="secondary" numberOfLines={1}>
-                        {project.description}
-                      </Text>
-                    )}
-                    <Text variant="caption" color="tertiary">
-                      {project.completedTaskCount}/{project.taskCount} tasks
-                    </Text>
-                  </View>
-                  <View style={[styles.projectProgress, { backgroundColor: theme.colors.border }]}>
-                    <View style={[styles.projectProgressFill, {
-                      width: project.taskCount > 0 ? `${(project.completedTaskCount / project.taskCount) * 100}%` : '0%',
-                      backgroundColor: theme.colors.success,
-                    }]} />
-                  </View>
-                </TouchableOpacity>
-              ))}
+              {projectsData.data.map((project) => {
+                const progress = project.taskCount > 0 ? Math.round((project.completedTaskCount / project.taskCount) * 100) : 0;
+                return (
+                  <PressScale key={project.id} lift onPress={() => { triggerHaptic('light'); router.push(`/(protected)/projects/${project.id}?workspaceId=${id}`); }}>
+                    <View style={[styles.projectCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                      <View style={styles.projectCardTop}>
+                        <View style={[styles.projectIcon, { backgroundColor: (project.color || theme.colors.primaryLight) + '30' }]}>
+                          <Text style={styles.projectEmoji}>{project.icon || '📁'}</Text>
+                        </View>
+                        <View style={styles.projectInfo}>
+                          <Text weight="semibold" variant="bodyMedium">{project.name}</Text>
+                          {project.description && (
+                            <Text variant="bodySmall" color="secondary" numberOfLines={1}>{project.description}</Text>
+                          )}
+                        </View>
+                        <View style={[styles.projectProgressBadge, { backgroundColor: progress >= 100 ? theme.colors.successLight : progress > 0 ? theme.colors.primaryLight : theme.colors.secondaryLight }]}>
+                          <Text style={[styles.projectProgressText, { color: progress >= 100 ? theme.colors.success : progress > 0 ? theme.colors.primary : theme.colors.text.tertiary }]}>
+                            {progress}%
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.projectMetaRow}>
+                        <Text variant="caption" color="tertiary">{project.completedTaskCount}/{project.taskCount} tasks</Text>
+                        {project.dueDate && (
+                          <Text variant="caption" color={new Date(project.dueDate) < new Date() ? 'danger' : 'tertiary'}>
+                            Due {new Date(project.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={[styles.projectProgressBar, { backgroundColor: theme.colors.border }]}>
+                        <View style={[styles.projectProgressFill, { width: `${progress}%`, backgroundColor: progress >= 100 ? theme.colors.success : theme.colors.primary }]} />
+                      </View>
+                    </View>
+                  </PressScale>
+                );
+              })}
             </View>
           )}
         </View>
@@ -230,55 +242,63 @@ export default function WorkspaceDetailScreen() {
         <View style={styles.actions}>
           {isOwner && (
             <>
-              <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/(protected)/workspaces/${id}/invite`)}
-                activeOpacity={0.7}
-              >
-                <Heading level={4}>Invite Members</Heading>
-                <Text variant="bodySmall" color="secondary">Add people to your workspace</Text>
-              </TouchableOpacity>
+              <PressScale lift>
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                  onPress={() => router.push(`/(protected)/workspaces/${id}/invite`)}
+                  activeOpacity={0.7}
+                >
+                  <Heading level={4}>Invite Members</Heading>
+                  <Text variant="bodySmall" color="secondary">Add people to your workspace</Text>
+                </TouchableOpacity>
+              </PressScale>
 
-              <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                onPress={handleDelete}
-                activeOpacity={0.7}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <ActivityIndicator color={theme.colors.danger} />
-                ) : (
-                  <>
-                    <Heading level={4} color="danger">Delete Workspace</Heading>
-                    <Text variant="bodySmall" color="secondary">Permanently remove this workspace</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <PressScale lift>
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                  onPress={handleDelete}
+                  activeOpacity={0.7}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? (
+                    <ActivityIndicator color={theme.colors.danger} />
+                  ) : (
+                    <>
+                      <Heading level={4} color="danger">Delete Workspace</Heading>
+                      <Text variant="bodySmall" color="secondary">Permanently remove this workspace</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </PressScale>
             </>
           )}
 
           {!isOwner && (
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-              onPress={handleLeave}
-              activeOpacity={0.7}
-            >
-              <Heading level={4} color="danger">Leave Workspace</Heading>
-              <Text variant="bodySmall" color="secondary">Remove yourself from this workspace</Text>
-            </TouchableOpacity>
+            <PressScale lift>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                onPress={handleLeave}
+                activeOpacity={0.7}
+              >
+                <Heading level={4} color="danger">Leave Workspace</Heading>
+                <Text variant="bodySmall" color="secondary">Remove yourself from this workspace</Text>
+              </TouchableOpacity>
+            </PressScale>
           )}
 
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-            onPress={() => {
-              triggerHaptic('light');
-              router.push(`/(protected)/workspaces/${id}/members`);
-            }}
-            activeOpacity={0.7}
-          >
-            <Heading level={4}>Manage Members</Heading>
-            <Text variant="bodySmall" color="secondary">View and manage member roles</Text>
-          </TouchableOpacity>
+          <PressScale lift>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+              onPress={() => {
+                triggerHaptic('light');
+                router.push(`/(protected)/workspaces/${id}/members`);
+              }}
+              activeOpacity={0.7}
+            >
+              <Heading level={4}>Manage Members</Heading>
+              <Text variant="bodySmall" color="secondary">View and manage member roles</Text>
+            </TouchableOpacity>
+          </PressScale>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -347,22 +367,15 @@ const styles = StyleSheet.create({
   loadingProjects: { paddingVertical: 24, alignItems: 'center' },
   emptyProjects: { paddingVertical: 32, alignItems: 'center' },
   projectList: { gap: 10 },
-  projectCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    gap: 10,
-  },
-  projectIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  projectEmoji: { fontSize: 20 },
-  projectInfo: { gap: 2, flex: 1 },
-  projectProgress: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  projectCard: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 10 },
+  projectCardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  projectIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  projectEmoji: { fontSize: 18 },
+  projectInfo: { flex: 1, gap: 2 },
+  projectProgressBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  projectProgressText: { fontSize: 12, fontWeight: '700' },
+  projectMetaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  projectProgressBar: { height: 4, borderRadius: 2, overflow: 'hidden' },
   projectProgressFill: { height: '100%', borderRadius: 2 },
   actions: {
     paddingHorizontal: 20,

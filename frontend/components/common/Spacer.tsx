@@ -1,10 +1,9 @@
 import React from 'react';
 import { View } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
-import { spacing } from '../../theme';
 
 export interface SpacerProps {
-  size?: keyof typeof spacing;
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
   horizontal?: boolean;
 }
 

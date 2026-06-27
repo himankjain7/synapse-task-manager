@@ -8,24 +8,29 @@ interface SearchResult {
 }
 
 export class SearchService {
-  static async global(query: string, userId: string): Promise<SearchResult> {
+  static async global(query: string, userId: string, workspaceId?: string): Promise<SearchResult> {
     const filter = { contains: query, mode: 'insensitive' as const };
 
-    const memberWorkspaceIds = (
-      await prisma.workspaceMember.findMany({
-        where: { userId },
-        select: { workspaceId: true },
-      })
-    ).map((m) => m.workspaceId);
+    let allWorkspaceIds: string[];
+    if (workspaceId) {
+      allWorkspaceIds = [workspaceId];
+    } else {
+      const memberWorkspaceIds = (
+        await prisma.workspaceMember.findMany({
+          where: { userId },
+          select: { workspaceId: true },
+        })
+      ).map((m) => m.workspaceId);
 
-    const ownedWorkspaceIds = (
-      await prisma.workspace.findMany({
-        where: { ownerId: userId },
-        select: { id: true },
-      })
-    ).map((w) => w.id);
+      const ownedWorkspaceIds = (
+        await prisma.workspace.findMany({
+          where: { ownerId: userId },
+          select: { id: true },
+        })
+      ).map((w) => w.id);
 
-    const allWorkspaceIds = [...new Set([...memberWorkspaceIds, ...ownedWorkspaceIds])];
+      allWorkspaceIds = [...new Set([...memberWorkspaceIds, ...ownedWorkspaceIds])];
+    }
 
     const [workspaces, projects, tasks, labels] = await Promise.all([
       prisma.workspace.findMany({

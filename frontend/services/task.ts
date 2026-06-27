@@ -7,6 +7,7 @@ import {
   TaskWithAssignee,
   TaskWithDetails,
   CommentWithAuthor,
+  CommentReaction,
   CreateTaskInput,
   UpdateTaskInput,
   ReorderTaskInput,
@@ -114,4 +115,52 @@ export const taskApi = {
     const response = await api.get<ApiResponse<ActivityLogItem[]>>(`/api/v1/tasks/${taskId}/activity`);
     return response.data.data;
   },
+
+  getSubtasks: async (taskId: string): Promise<Subtask[]> => {
+    const response = await api.get<ApiResponse<Subtask[]>>(`/api/v1/tasks/${taskId}/subtasks`);
+    return response.data.data;
+  },
+
+  createSubtask: async (taskId: string, input: { title: string }): Promise<Subtask> => {
+    const response = await api.post<ApiResponse<Subtask>>(`/api/v1/tasks/${taskId}/subtasks`, input);
+    return response.data.data;
+  },
+
+  updateSubtask: async (taskId: string, subtaskId: string, input: { title?: string; completed?: boolean; position?: number }): Promise<Subtask> => {
+    const response = await api.patch<ApiResponse<Subtask>>(`/api/v1/tasks/${taskId}/subtasks/${subtaskId}`, input);
+    return response.data.data;
+  },
+
+  deleteSubtask: async (taskId: string, subtaskId: string): Promise<void> => {
+    await api.delete(`/api/v1/tasks/${taskId}/subtasks/${subtaskId}`);
+  },
+
+  bulkUpdate: async (projectId: string, data: { taskIds: string[]; status?: string; priority?: string; assignedTo?: string | null }): Promise<TaskWithAssignee[]> => {
+    const response = await api.post<ApiResponse<TaskWithAssignee[]>>(`/api/v1/projects/${projectId}/tasks/bulk-update`, data);
+    return response.data.data;
+  },
+
+  bulkDelete: async (projectId: string, taskIds: string[]): Promise<{ deletedCount: number }> => {
+    const response = await api.post<ApiResponse<{ deletedCount: number }>>(`/api/v1/projects/${projectId}/tasks/bulk-delete`, { taskIds });
+    return response.data.data;
+  },
+
+  addReaction: async (taskId: string, commentId: string, emoji: string): Promise<CommentReaction> => {
+    const response = await api.post<ApiResponse<CommentReaction>>(`/api/v1/tasks/${taskId}/comments/${commentId}/reactions`, { emoji });
+    return response.data.data;
+  },
+
+  removeReaction: async (taskId: string, commentId: string, emoji: string): Promise<void> => {
+    await api.delete(`/api/v1/tasks/${taskId}/comments/${commentId}/reactions/${encodeURIComponent(emoji)}`);
+  },
 };
+
+export interface Subtask {
+  id: string;
+  taskId: string;
+  title: string;
+  completed: boolean;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}

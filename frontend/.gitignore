@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+build/
+
+# Expo
+.expo/
+.expo-shared/
+web-build/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Cache
+.cache/
+*.tsbuildinfo
+
+# Native
+ios/
+android/
+*.apk
+*.aab
+*.ipa

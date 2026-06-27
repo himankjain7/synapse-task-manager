@@ -40,11 +40,21 @@ export const workspaceApi = {
   },
 
   getMembers: async (workspaceId: string, page = 1, limit = 50): Promise<PaginatedResponse<WorkspaceMemberWithUser>> => {
-    const response = await api.get<ApiResponse<PaginatedResponse<WorkspaceMemberWithUser>>>(
-      `/api/v1/workspaces/${workspaceId}/members`,
-      { params: { page, limit } }
-    );
-    return response.data.data;
+    const url = `/api/v1/workspaces/${workspaceId}/members`;
+    console.log("[DEBUG workspaceApi.getMembers] before request:", { workspaceId, url, page, limit });
+    try {
+      const response = await api.get<ApiResponse<PaginatedResponse<WorkspaceMemberWithUser>>>(url, { params: { page, limit } });
+      console.log("[DEBUG workspaceApi.getMembers] success:", { status: response.status, data: response.data });
+      return response.data.data;
+    } catch (error: any) {
+      console.log("[DEBUG workspaceApi.getMembers] failure:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+        url: error.config?.url,
+      });
+      throw error;
+    }
   },
 
   inviteMember: async (workspaceId: string, input: InviteMemberInput): Promise<WorkspaceMemberWithUser> => {

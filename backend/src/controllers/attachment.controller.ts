@@ -4,8 +4,9 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { APIError } from '../middleware/error.middleware';
 import prisma from '../config/db';
 import { getIo } from '../socket';
-import { v4 as uuidv4 } from 'uuid';
-import { makeNotif, getUserInfo } from '../utils/notification';
+import { NotificationService } from '../services/notification.service';
+import { sendSuccess } from '../utils/response';
+import { safeSideEffect } from '../utils/safeSideEffect';
 
 export class AttachmentController {
   static upload = asyncHandler(async (req: Request, res: Response): Promise<void> => {
@@ -16,22 +17,25 @@ export class AttachmentController {
     const attachment = await AttachmentService.upload(taskId, userId, req.file);
 
     if (attachment) {
-      const io = getIo();
-      const actor = await getUserInfo(userId);
       const task = await prisma.task.findUnique({ where: { id: taskId }, select: { title: true, projectId: true, assignedTo: true } });
       if (task) {
         const project = await prisma.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
-        const payload = makeNotif(uuidv4(), 'attachment_uploaded', 'File Uploaded',
-          `${actor.name} uploaded "${attachment.fileName}" to "${task.title}"`,
-          actor, taskId, task.projectId, project?.workspaceId);
         if (task.assignedTo) {
-          io.to(`user:${task.assignedTo}`).emit('notification', payload);
+          await NotificationService.notify({
+            recipientId: task.assignedTo, actorId: userId,
+            type: 'attachment_uploaded', title: 'File Uploaded',
+            message: `uploaded "${attachment.fileName}" to "${task.title}"`,
+            taskId, projectId: task.projectId, workspaceId: project?.workspaceId,
+          });
         }
-        io.to(`project:${task.projectId}`).emit('attachment:uploaded', { attachment });
+        await safeSideEffect(async () => {
+          const io = getIo();
+          io.to(`project:${task.projectId}`).emit('attachment:uploaded', { attachment });
+        }, 'socket:attachment:uploaded');
       }
     }
 
-    res.status(201).json({ success: true, data: attachment, timestamp: new Date() });
+    sendSuccess(res, attachment, 201);
   });
 
   static list = asyncHandler(async (req: Request, res: Response): Promise<void> => {
@@ -39,7 +43,7 @@ export class AttachmentController {
     const { taskId } = req.params;
     if (!userId) throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     const attachments = await AttachmentService.list(taskId, userId);
-    res.status(200).json({ success: true, data: attachments, timestamp: new Date() });
+    sendSuccess(res, attachments);
   });
 
   static delete = asyncHandler(async (req: Request, res: Response): Promise<void> => {
@@ -56,15 +60,18 @@ export class AttachmentController {
 
     if (attachInfo && attachInfo.task) {
       const project = await prisma.project.findUnique({ where: { id: attachInfo.task.projectId }, select: { workspaceId: true } });
-      const io = getIo();
-      const actor = await getUserInfo(userId);
-      const payload = makeNotif(uuidv4(), 'attachment_deleted', 'File Deleted',
-        `${actor.name} deleted "${attachInfo.fileName}"`,
-        actor, attachInfo.taskId, attachInfo.task.projectId, project?.workspaceId);
       if (attachInfo.task.assignedTo) {
-        io.to(`user:${attachInfo.task.assignedTo}`).emit('notification', payload);
+        await NotificationService.notify({
+          recipientId: attachInfo.task.assignedTo, actorId: userId,
+          type: 'attachment_deleted', title: 'File Deleted',
+          message: `deleted "${attachInfo.fileName}"`,
+          taskId: attachInfo.taskId, projectId: attachInfo.task.projectId, workspaceId: project?.workspaceId,
+        });
       }
-      io.to(`project:${attachInfo.task.projectId}`).emit('attachment:deleted', { attachmentId: id });
+      await safeSideEffect(async () => {
+        const io = getIo();
+        io.to(`project:${attachInfo.task.projectId}`).emit('attachment:deleted', { attachmentId: id });
+      }, 'socket:attachment:deleted');
     }
 
     res.status(204).send();

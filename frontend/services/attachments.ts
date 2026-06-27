@@ -19,11 +19,9 @@ export const attachmentApi = {
   },
 
   upload: async (taskId: string, file: FormData): Promise<Attachment> => {
-    console.log('[ATTACHMENT-API] Sending upload, FormData keys:', [...(file as any)._parts?.map((p: any) => p[0]) || []]);
     const response = await api.post(`/api/v1/tasks/${taskId}/attachments`, file, {
       transformRequest: [(data) => data],
     });
-    console.log('[ATTACHMENT-API] Upload response:', response.status, response.data);
     return response.data.data;
   },
 

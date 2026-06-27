@@ -298,8 +298,10 @@ export class GoogleAuthService {
         user = await prisma.user.update({
           where: { id: user.id },
           data: {
-            googleId, // Link Google ID
-            avatarUrl: avatarUrl || user.avatarUrl, // Update avatar if Google has one
+            googleId,
+            provider: 'google',
+            emailVerified: true,
+            avatarUrl: avatarUrl || user.avatarUrl,
             updatedAt: new Date(),
           },
         });
@@ -321,7 +323,9 @@ export class GoogleAuthService {
           email,
           name: name.trim(),
           avatarUrl,
-          passwordHash: '', // OAuth users don't have passwords
+          provider: 'google',
+          emailVerified: true,
+          passwordHash: '',
           createdAt: new Date(),
           updatedAt: new Date(),
         },
@@ -428,8 +432,16 @@ export class GoogleAuthService {
       email: user.email,
       name: user.name,
       avatarUrl: user.avatarUrl,
+      provider: user.provider,
+      emailVerified: user.emailVerified,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
+  }
+
+  static isNewUser(user: User): boolean {
+    const createdAt = new Date(user.createdAt);
+    const now = new Date();
+    return (now.getTime() - createdAt.getTime()) < 5000;
   }
 }

@@ -1,5 +1,6 @@
 import prisma from '../config/db';
-import { ProjectService } from './project.service';
+import { Prisma } from '@prisma/client';
+import { AuthzService } from './authz.service';
 
 interface WorkspaceAnalytics {
   totalProjects: number;
@@ -32,50 +33,220 @@ interface UserAnalytics {
   overdueAssigned: number;
 }
 
+interface DashboardAnalytics {
+  completedTasks: number;
+  activeTasks: number;
+  overdueTasks: number;
+  completionRate: number;
+  productivityScore: number;
+  weeklyTrend: { date: string; count: number }[];
+  monthlyTrend: { date: string; count: number }[];
+  upcomingDeadlines: { id: string; title: string; dueDate: Date; projectId: string; projectName: string }[];
+  todayCompleted: number;
+  todayCreated: number;
+  totalTasks: number;
+}
+
 export class AnalyticsService {
-  static async getWorkspaceAnalytics(workspaceId: string, userId: string): Promise<WorkspaceAnalytics> {
-    const canAccess = await ProjectService.canAccessProject(workspaceId, userId);
-    if (!canAccess) {
-      const memberCheck = await prisma.workspaceMember.findFirst({
-        where: { workspaceId, userId },
+
+  static async getDashboardAnalytics(userId: string, workspaceId?: string): Promise<DashboardAnalytics> {
+    const now = new Date();
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const prevWeekStart = new Date(weekStart);
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+
+    let accessibleProjectIds: string[];
+    if (workspaceId) {
+      const projects = await prisma.project.findMany({
+        where: { workspaceId },
+        select: { id: true },
       });
-      if (!memberCheck) throw new Error('Access denied');
+      accessibleProjectIds = projects.map((p) => p.id);
+    } else {
+      const memberWorkspaces = await prisma.workspaceMember.findMany({
+        where: { userId },
+        select: { workspaceId: true },
+      });
+      const workspaceIds = memberWorkspaces.map((m) => m.workspaceId);
+      const accessibleProjects = await prisma.project.findMany({
+        where: { workspaceId: { in: workspaceIds } },
+        select: { id: true },
+      });
+      accessibleProjectIds = accessibleProjects.map((p) => p.id);
     }
+
+    const taskWhere = { projectId: { in: accessibleProjectIds }, deletedAt: null } as const;
+
+    const [
+      totalTasks,
+      statusGroups,
+      overdueTasks,
+      todayCompleted,
+      todayCreated,
+      currentWeekCompleted,
+      prevWeekCompleted,
+      upcomingTasks,
+      projects,
+    ] = await Promise.all([
+      prisma.task.count({ where: taskWhere }),
+      prisma.task.groupBy({ by: ['status'], where: taskWhere, _count: true }),
+      prisma.task.count({ where: { ...taskWhere, dueDate: { lt: now }, status: { not: 'done' } } }),
+      prisma.task.count({ where: { ...taskWhere, completedAt: { gte: dayStart } } }),
+      prisma.task.count({ where: { ...taskWhere, createdAt: { gte: dayStart } } }),
+      prisma.task.count({ where: { ...taskWhere, completedAt: { gte: weekStart } } }),
+      prisma.task.count({ where: { ...taskWhere, completedAt: { gte: prevWeekStart, lt: weekStart } } }),
+      prisma.task.findMany({
+        where: { ...taskWhere, dueDate: { not: null }, status: { not: 'done' } },
+        orderBy: { dueDate: 'asc' },
+        take: 5,
+        select: { id: true, title: true, dueDate: true, projectId: true },
+      }),
+      prisma.project.findMany({
+        where: { id: { in: accessibleProjectIds } },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    const statusMap = Object.fromEntries(statusGroups.map((g) => [g.status, g._count]));
+    const completedTasks = statusMap['done'] || 0;
+    const activeTasks = totalTasks - completedTasks - (statusMap['backlog'] || 0);
+    const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    const productivityScore = prevWeekCompleted > 0
+      ? Math.round((currentWeekCompleted / prevWeekCompleted) * 100)
+      : currentWeekCompleted > 0 ? 100 : 0;
+
+    const weekLabels = Array.from({ length: 8 }, (_, i) => {
+      const start = new Date(now);
+      start.setDate(start.getDate() - start.getDay() - (7 - i) * 7);
+      start.setHours(0, 0, 0, 0);
+      return { start, label: start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) };
+    });
+
+    const countByWeek = new Map<string, number>();
+    if (accessibleProjectIds.length > 0) {
+      const trendStart = weekLabels[0].start;
+      const weeklyRows = await prisma.$queryRaw<Array<{ period: Date; count: bigint }>>`
+        SELECT DATE_TRUNC('week', "completed_at")::date AS period, COUNT(*)::bigint AS count
+        FROM "tasks"
+        WHERE "project_id"::text IN (${Prisma.join(accessibleProjectIds)})
+          AND "deleted_at" IS NULL
+          AND "completed_at" IS NOT NULL
+          AND "completed_at" >= ${trendStart}
+        GROUP BY period ORDER BY period
+      `;
+      for (const row of weeklyRows) {
+        countByWeek.set(row.period.toISOString().slice(0, 10), Number(row.count));
+      }
+    }
+    const weeklyTrend = weekLabels.map(({ start, label }) => ({
+      date: label,
+      count: countByWeek.get(start.toISOString().slice(0, 10)) || 0,
+    }));
+
+    const monthLabels = Array.from({ length: 6 }, (_, i) => {
+      const start = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      return { start, label: start.toLocaleDateString('en-US', { month: 'short' }) };
+    });
+
+    const countByMonth = new Map<string, number>();
+    if (accessibleProjectIds.length > 0) {
+      const monthlyRows = await prisma.$queryRaw<Array<{ period: Date; count: bigint }>>`
+        SELECT DATE_TRUNC('month', "completed_at")::date AS period, COUNT(*)::bigint AS count
+        FROM "tasks"
+        WHERE "project_id"::text IN (${Prisma.join(accessibleProjectIds)})
+          AND "deleted_at" IS NULL
+          AND "completed_at" IS NOT NULL
+          AND "completed_at" >= ${monthLabels[0].start}
+        GROUP BY period ORDER BY period
+      `;
+      for (const row of monthlyRows) {
+        countByMonth.set(row.period.toISOString().slice(0, 7), Number(row.count));
+      }
+    }
+    const monthlyTrend = monthLabels.map(({ start, label }) => ({
+      date: label,
+      count: countByMonth.get(start.toISOString().slice(0, 7)) || 0,
+    }));
+
+    const projectMap = Object.fromEntries(projects.map((p) => [p.id, p.name]));
+    const upcomingDeadlines = upcomingTasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      dueDate: t.dueDate!,
+      projectId: t.projectId,
+      projectName: projectMap[t.projectId] || 'Unknown',
+    }));
+
+    return {
+      completedTasks,
+      activeTasks,
+      overdueTasks,
+      completionRate,
+      productivityScore,
+      weeklyTrend,
+      monthlyTrend,
+      upcomingDeadlines,
+      todayCompleted,
+      todayCreated,
+      totalTasks,
+    };
+  }
+
+  static async getWorkspaceAnalytics(workspaceId: string, userId: string): Promise<WorkspaceAnalytics> {
+    await AuthzService.requireWorkspaceAccess(workspaceId, userId);
+    const now = new Date();
 
     const projects = await prisma.project.findMany({
       where: { workspaceId, deletedAt: null },
       select: { id: true, name: true },
     });
     const projectIds = projects.map((p) => p.id);
+    const taskWhere = { projectId: { in: projectIds }, deletedAt: null } as const;
 
-    const tasks = await prisma.task.findMany({
-      where: { projectId: { in: projectIds }, deletedAt: null },
-      select: { id: true, status: true, priority: true, dueDate: true, title: true, projectId: true, completedAt: true },
-    });
+    const [
+      totalTasks,
+      statusGroups,
+      priorityGroups,
+      overdueTasks,
+      highPriorityCount,
+      completedToday,
+      upcomingTasks,
+      recentLogs,
+    ] = await Promise.all([
+      prisma.task.count({ where: taskWhere }),
+      prisma.task.groupBy({ by: ['status'], where: taskWhere, _count: true }),
+      prisma.task.groupBy({ by: ['priority'], where: taskWhere, _count: true }),
+      prisma.task.count({ where: { ...taskWhere, dueDate: { lt: now }, status: { not: 'done' } } }),
+      prisma.task.count({ where: { ...taskWhere, priority: { in: ['high', 'urgent'] } } }),
+      prisma.task.count({
+        where: { ...taskWhere, completedAt: { gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()) } },
+      }),
+      prisma.task.findMany({
+        where: { ...taskWhere, dueDate: { not: null }, status: { not: 'done' } },
+        orderBy: { dueDate: 'asc' },
+        take: 5,
+        select: { id: true, title: true, dueDate: true, projectId: true },
+      }),
+      prisma.activityLog.findMany({
+        where: { workspaceId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: { user: { select: { id: true, name: true } } },
+      }),
+    ]);
 
-    const totalTasks = tasks.length;
-    const completedTasks = tasks.filter((t) => t.status === 'done').length;
-    const activeTasks = tasks.filter((t) => t.status !== 'done' && t.status !== 'backlog').length;
-    const now = new Date();
-    const overdueTasks = tasks.filter((t) => t.dueDate && t.dueDate < now && t.status !== 'done').length;
+    const statusMap = Object.fromEntries(statusGroups.map((g) => [g.status, g._count]));
+    const completedTasks = statusMap['done'] || 0;
+    const activeTasks = totalTasks - completedTasks - (statusMap['backlog'] || 0);
     const completionPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-    const priorityCounts: Record<string, number> = {};
-    const statusCounts: Record<string, number> = {};
-    for (const t of tasks) {
-      priorityCounts[t.priority] = (priorityCounts[t.priority] || 0) + 1;
-      statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
-    }
-
-    const tasksByPriority = Object.entries(priorityCounts).map(([priority, count]) => ({ priority, count }));
-    const tasksByStatus = Object.entries(statusCounts).map(([status, count]) => ({ status, count }));
-
-    const recentLogs = await prisma.activityLog.findMany({
-      where: { workspaceId },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      include: { user: { select: { id: true, name: true } } },
-    });
+    const tasksByPriority = priorityGroups
+      .filter((g) => g.priority)
+      .map((g) => ({ priority: g.priority, count: g._count }));
+    const tasksByStatus = statusGroups.map((g) => ({ status: g.status, count: g._count }));
 
     const recentActivity = recentLogs.map((l) => ({
       id: l.id,
@@ -85,23 +256,21 @@ export class AnalyticsService {
       createdAt: l.createdAt,
     }));
 
-    const upcomingDeadlines = tasks
-      .filter((t) => t.dueDate && t.status !== 'done')
-      .sort((a, b) => (a.dueDate!.getTime() - b.dueDate!.getTime()))
-      .slice(0, 5)
-      .map((t) => {
-        const proj = projects.find((p) => p.id === t.projectId);
-        return { id: t.id, title: t.title, dueDate: t.dueDate!, projectId: t.projectId, projectName: proj?.name || 'Unknown' };
-      });
+    const projectMap = Object.fromEntries(projects.map((p) => [p.id, p.name]));
+    const upcomingDeadlines = upcomingTasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      dueDate: t.dueDate!,
+      projectId: t.projectId,
+      projectName: projectMap[t.projectId] || 'Unknown',
+    }));
 
     const insights: string[] = [];
     if (completedTasks > 0) insights.push(`You have completed ${completedTasks} tasks.`);
     if (overdueTasks > 0) insights.push(`You have ${overdueTasks} overdue tasks that need attention.`);
     if (completionPercent > 50) insights.push(`Overall completion rate is ${completionPercent}%. Good progress!`);
     else insights.push(`Overall completion rate is ${completionPercent}%. Keep pushing!`);
-    const highPriority = tasks.filter((t) => t.priority === 'high' || t.priority === 'urgent').length;
-    if (highPriority > 0) insights.push(`There are ${highPriority} high priority tasks.`);
-    const completedToday = tasks.filter((t) => t.completedAt && t.completedAt.toDateString() === now.toDateString()).length;
+    if (highPriorityCount > 0) insights.push(`There are ${highPriorityCount} high priority tasks.`);
     if (completedToday > 0) insights.push(`You completed ${completedToday} tasks today.`);
 
     return {
@@ -120,61 +289,87 @@ export class AnalyticsService {
   }
 
   static async getProjectAnalytics(projectId: string, userId: string): Promise<ProjectAnalytics> {
-    const canAccess = await ProjectService.canAccessProject(projectId, userId);
-    if (!canAccess) throw new Error('Access denied');
+    await AuthzService.requireProjectAccess(projectId, userId);
+    const now = new Date();
 
-    const tasks = await prisma.task.findMany({
-      where: { projectId, deletedAt: null },
-      orderBy: { createdAt: 'asc' },
+    const taskWhere = { projectId, deletedAt: null } as const;
+
+    const [
+      totalTasks,
+      completedTasks,
+      statusGroups,
+      priorityGroups,
+      aggregation,
+    ] = await Promise.all([
+      prisma.task.count({ where: taskWhere }),
+      prisma.task.count({ where: { ...taskWhere, status: 'done' } }),
+      prisma.task.groupBy({ by: ['status'], where: taskWhere, _count: true }),
+      prisma.task.groupBy({ by: ['priority'], where: taskWhere, _count: true }),
+      prisma.task.aggregate({ where: taskWhere, _min: { createdAt: true } }),
+    ]);
+
+    const completionPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    const tasksByStatus = statusGroups.map((g) => ({ status: g.status, count: g._count }));
+    const tasksByPriority = priorityGroups
+      .filter((g) => g.priority)
+      .map((g) => ({ priority: g.priority, count: g._count }));
+
+    const weekLabels = Array.from({ length: 4 }, (_, i) => {
+      const start = new Date(now);
+      start.setDate(start.getDate() - start.getDay() - (3 - i) * 7);
+      start.setHours(0, 0, 0, 0);
+      return { start, label: start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) };
     });
 
-    const totalTasks = tasks.length;
-    const completedTasks = tasks.filter((t) => t.status === 'done').length;
-    const completionPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
-    const statusCounts: Record<string, number> = {};
-    const priorityCounts: Record<string, number> = {};
-    for (const t of tasks) {
-      statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
-      priorityCounts[t.priority] = (priorityCounts[t.priority] || 0) + 1;
+    const countByWeek = new Map<string, number>();
+    const trendStart = weekLabels[0].start;
+    const weeklyRows = await prisma.$queryRaw<Array<{ period: Date; count: bigint }>>`
+      SELECT DATE_TRUNC('week', "completed_at")::date AS period, COUNT(*)::bigint AS count
+      FROM "tasks"
+      WHERE "project_id"::text = ${projectId}
+        AND "deleted_at" IS NULL
+        AND "completed_at" IS NOT NULL
+        AND "completed_at" >= ${trendStart}
+      GROUP BY period ORDER BY period
+    `;
+    for (const row of weeklyRows) {
+      countByWeek.set(row.period.toISOString().slice(0, 10), Number(row.count));
     }
+    const completionTrend = weekLabels.map(({ start, label }) => ({
+      date: label,
+      count: countByWeek.get(start.toISOString().slice(0, 10)) || 0,
+    }));
 
-    const tasksByStatus = Object.entries(statusCounts).map(([status, count]) => ({ status, count }));
-    const tasksByPriority = Object.entries(priorityCounts).map(([priority, count]) => ({ priority, count }));
-
-    const weeks = 4;
-    const now = new Date();
-    const completionTrend: { date: string; count: number }[] = [];
-    for (let i = weeks - 1; i >= 0; i--) {
-      const start = new Date(now);
-      start.setDate(start.getDate() - start.getDay() - i * 7);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setDate(end.getDate() + 7);
-      const count = tasks.filter((t) => t.completedAt && t.completedAt >= start && t.completedAt < end).length;
-      const label = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      completionTrend.push({ date: label, count });
-    }
-
-    const oldestTask = tasks.length > 0 ? tasks[0].createdAt : now;
-    const daysSinceFirst = Math.max(1, (now.getTime() - oldestTask.getTime()) / (1000 * 60 * 60 * 24));
+    const oldestCreatedAt = aggregation._min.createdAt;
+    const daysSinceFirst = oldestCreatedAt
+      ? Math.max(1, (now.getTime() - oldestCreatedAt.getTime()) / (1000 * 60 * 60 * 24))
+      : 1;
     const velocity = Math.round(completedTasks / (daysSinceFirst / 7));
 
     return { totalTasks, completedTasks, completionPercent, velocity, completionTrend, tasksByStatus, tasksByPriority };
   }
 
-  static async getUserAnalytics(userId: string): Promise<UserAnalytics> {
+  static async getUserAnalytics(userId: string, workspaceId?: string): Promise<UserAnalytics> {
     const now = new Date();
     const weekStart = new Date(now);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
     weekStart.setHours(0, 0, 0, 0);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    const taskWhere: any = { assignedTo: userId, deletedAt: null };
+    if (workspaceId) {
+      const projectIds = await prisma.project.findMany({
+        where: { workspaceId },
+        select: { id: true },
+      });
+      taskWhere.projectId = { in: projectIds.map((p) => p.id) };
+    }
+
     const [assignedTasks, completedThisWeek, completedThisMonth, overdueAssigned] = await Promise.all([
-      prisma.task.count({ where: { assignedTo: userId, deletedAt: null } }),
-      prisma.task.count({ where: { assignedTo: userId, status: 'done', completedAt: { gte: weekStart }, deletedAt: null } }),
-      prisma.task.count({ where: { assignedTo: userId, status: 'done', completedAt: { gte: monthStart }, deletedAt: null } }),
-      prisma.task.count({ where: { assignedTo: userId, dueDate: { lt: now }, status: { not: 'done' }, deletedAt: null } }),
+      prisma.task.count({ where: taskWhere }),
+      prisma.task.count({ where: { ...taskWhere, status: 'done', completedAt: { gte: weekStart } } }),
+      prisma.task.count({ where: { ...taskWhere, status: 'done', completedAt: { gte: monthStart } } }),
+      prisma.task.count({ where: { ...taskWhere, dueDate: { lt: now }, status: { not: 'done' } } }),
     ]);
 
     return { assignedTasks, completedThisWeek, completedThisMonth, overdueAssigned };

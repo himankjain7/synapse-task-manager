@@ -312,41 +312,4 @@ export const validate = (schema: any) => {
     }
   };
 };
-import jwt from 'jsonwebtoken';
 
-export interface AuthenticatedRequest extends Request {
-  user?: AuthContext;
-}
-
-/**
- * Middleware: authenticateToken
- * Verifies Bearer JWT token in Authorization header.
- * Attaches decoded payload to req.user.
- */
-export const authenticateToken = (
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer <token>
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access token is missing or malformed' });
-  }
-
-  try {
-    const jwtSecret = process.env.JWT_SECRET || 'dev_secret_only_for_local_debugging_replace_in_production';
-    const decoded = jwt.verify(token, jwtSecret) as { userId?: string; id?: string; email: string };
-
-    req.user = {
-      userId: decoded.userId ?? decoded.id ?? '',
-      email: decoded.email,
-    };
-    
-    return next();
-  } catch (err) {
-    // If token verification fails (expired or modified)
-    return res.status(403).json({ error: 'Access token is invalid or expired' });
-  }
-};

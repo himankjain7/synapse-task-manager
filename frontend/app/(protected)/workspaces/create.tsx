@@ -17,6 +17,8 @@ import { useWorkspaceStore } from '../../../store/workspaceStore';
 import { useToastStore } from '../../../store/toastStore';
 import { Text } from '../../../components/typography/Text';
 import { Heading } from '../../../components/typography/Heading';
+import { FadeIn } from '../../../components/animations/FadeIn';
+import { PressScale } from '../../../components/animations/PressScale';
 import { triggerHaptic } from '../../../utils/haptics';
 import { ApiError } from '../../../utils/error';
 
@@ -71,7 +73,8 @@ export default function CreateWorkspaceScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <View style={styles.content}>
+          <FadeIn spring>
+            <View style={styles.content}>
             <View style={styles.field}>
               <Text variant="bodySmall" color="secondary" weight="semibold" style={styles.label}>
                 Workspace Name
@@ -127,26 +130,29 @@ export default function CreateWorkspaceScreen() {
               </View>
             )}
           </View>
+        </FadeIn>
         </ScrollView>
 
         <View style={[styles.footer, { borderTopColor: theme.colors.border }]}>
-          <TouchableOpacity
-            style={[
-              styles.submitButton,
-              { backgroundColor: theme.colors.primary, opacity: canSubmit ? 1 : 0.5 },
-            ]}
-            onPress={handleSubmit}
-            disabled={!canSubmit}
-            activeOpacity={0.8}
-          >
-            {isPending ? (
-              <ActivityIndicator color={theme.colors.text.onPrimary} />
-            ) : (
-              <Text style={[styles.submitText, { color: theme.colors.text.onPrimary }]} weight="semibold">
-                Create Workspace
-              </Text>
-            )}
-          </TouchableOpacity>
+          <PressScale lift scaleTo={0.96}>
+            <TouchableOpacity
+              style={[
+                styles.submitButton,
+                { backgroundColor: theme.colors.primary, opacity: canSubmit ? 1 : 0.5 },
+              ]}
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+              activeOpacity={0.8}
+            >
+              {isPending ? (
+                <ActivityIndicator color={theme.colors.text.onPrimary} />
+              ) : (
+                <Text style={[styles.submitText, { color: theme.colors.text.onPrimary }]} weight="semibold">
+                  Create Workspace
+                </Text>
+              )}
+            </TouchableOpacity>
+          </PressScale>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -205,7 +211,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    ...({ shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 } as any),
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
   submitText: { fontSize: 16 },
 });

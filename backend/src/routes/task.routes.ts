@@ -262,6 +262,29 @@ router.post(
 );
 
 /**
+ * POST /projects/:projectId/tasks/bulk-delete
+ * Delete multiple tasks at once
+ *
+ * Middleware chain:
+ * 1. validateBody
+ * 2. validateRequired - taskIds required
+ *
+ * Request body:
+ * {
+ *   taskIds: string[]
+ * }
+ *
+ * Response: 200 OK
+ * { deletedCount: number }
+ */
+router.post(
+  '/bulk-delete',
+  validateBody,
+  validateRequired(['taskIds']),
+  TaskController.bulkDeleteTasks
+);
+
+/**
  * GET /tasks/assigned
  * Get tasks assigned to current user
  *

@@ -9,15 +9,22 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../../hooks/useTheme';
 import { useAuthStore } from '../../../store/authStore';
 import { useWorkspaces } from '../../../hooks/useWorkspaces';
-import { useWorkspaceStore } from '../../../store/workspaceStore';
+import { useWorkspaceStore, previousWorkspaceId } from '../../../store/workspaceStore';
+import { usePresenceStore } from '../../../store/presenceStore';
+import { useNotificationStore } from '../../../store/notificationStore';
+import { getSocket } from '../../../services/socket';
 import { Text } from '../../../components/typography/Text';
 import { Heading } from '../../../components/typography/Heading';
 import { SkeletonCard } from '../../../components/workspace/SkeletonCard';
 import { EmptyState } from '../../../components/feedback/EmptyState';
 import { ErrorState } from '../../../components/feedback/ErrorState';
+import { PressScale } from '../../../components/animations/PressScale';
+import { FadeIn } from '../../../components/animations/FadeIn';
 import { getInitials } from '../../../utils/formatting';
 import { formatRelativeTime } from '../../../utils/date';
 import { triggerHaptic } from '../../../utils/haptics';
@@ -38,60 +45,41 @@ function WorkspaceCard({
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const scale = React.useRef(new Animated.Value(1)).current;
-
-  const handlePressIn = () => {
-    Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
-  };
-
   const initials = getInitials(workspace.name);
 
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
-      <TouchableOpacity
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.9}
-        onLongPress={() => triggerHaptic('medium')}
+    <PressScale lift onPress={onPress}>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+          },
+        ]}
       >
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              ...theme.elevation.sm,
-            },
-          ]}
-        >
-          <View style={styles.cardRow}>
-            <View style={[styles.avatar, { backgroundColor: theme.colors.primaryLight }]}>
-              <Text style={[styles.avatarText, { color: theme.colors.primary }]}>{initials}</Text>
-            </View>
-            <View style={styles.cardContent}>
-              <Heading level={4} style={styles.cardName}>
-                {workspace.name}
-              </Heading>
-              {workspace.description && (
-                <Text variant="bodySmall" color="secondary" numberOfLines={1}>
-                  {workspace.description}
-                </Text>
-              )}
-              <View style={styles.cardMeta}>
-                <Text variant="caption" color="tertiary">
-                  Updated {formatRelativeTime(workspace.updatedAt)}
-                </Text>
-              </View>
+        <View style={styles.cardRow}>
+          <View style={[styles.avatar, { backgroundColor: theme.colors.primaryLight }]}>
+            <Text style={[styles.avatarText, { color: theme.colors.primary }]}>{initials}</Text>
+          </View>
+          <View style={styles.cardContent}>
+            <Heading level={4} style={styles.cardName}>
+              {workspace.name}
+            </Heading>
+            {workspace.description && (
+              <Text variant="bodySmall" color="secondary" numberOfLines={1}>
+                {workspace.description}
+              </Text>
+            )}
+            <View style={styles.cardMeta}>
+              <Text variant="caption" color="tertiary">
+                Updated {formatRelativeTime(workspace.updatedAt)}
+              </Text>
             </View>
           </View>
         </View>
-      </TouchableOpacity>
-    </Animated.View>
+      </View>
+    </PressScale>
   );
 }
 
@@ -100,6 +88,9 @@ export default function WorkspacesScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const selectWorkspace = useWorkspaceStore((s) => s.selectWorkspace);
+  const resetPresence = usePresenceStore((s) => s.reset);
+  const setNotifications = useNotificationStore((s) => s.setNotifications);
+  const clearBadge = useNotificationStore((s) => s.clearBadge);
   const {
   data,
   isLoading,
@@ -107,14 +98,37 @@ export default function WorkspacesScreen() {
   refetch,
   isRefetching,
 } = useWorkspaces();
+  const queryClient = useQueryClient();
 
   const handleWorkspacePress = useCallback(
     (workspace: WorkspaceWithOwner) => {
+      const socket = getSocket();
+      if (socket && previousWorkspaceId) {
+        socket.emit('leave:workspace', { workspaceId: previousWorkspaceId });
+      }
+      queryClient.removeQueries({ queryKey: ['projects'] });
+      queryClient.removeQueries({ queryKey: ['tasks'] });
+      queryClient.removeQueries({ queryKey: ['analytics'] });
+      queryClient.removeQueries({ queryKey: ['notifications'] });
+      queryClient.removeQueries({ queryKey: ['activity'] });
+      queryClient.removeQueries({ queryKey: ['labels'] });
+      queryClient.removeQueries({ queryKey: ['search'] });
+      queryClient.removeQueries({ queryKey: ['workspaces', 'members'] });
+      queryClient.removeQueries({ queryKey: ['attachments'] });
+      queryClient.removeQueries({ queryKey: ['subtasks'] });
+      queryClient.removeQueries({ queryKey: ['task-activity'] });
+      AsyncStorage.removeItem('synapse-notifications');
+      resetPresence();
+      setNotifications([]);
+      clearBadge();
       selectWorkspace(workspace.id);
+      if (socket) {
+        socket.emit('join:workspace', { workspaceId: workspace.id });
+      }
       triggerHaptic('light');
       router.push(`/(protected)/workspaces/${workspace.id}`);
     },
-    [router, selectWorkspace]
+    [router, selectWorkspace, queryClient, resetPresence, setNotifications, clearBadge]
   );
 
   const handleCreate = useCallback(() => {
@@ -183,14 +197,15 @@ export default function WorkspacesScreen() {
           />
         )}
 
-        {data && data.data.length > 0 && (
+          {data && data.data.length > 0 && (
           <View style={styles.list}>
-            {data.data.map((workspace) => (
-              <WorkspaceCard
-                key={workspace.id}
-                workspace={workspace}
-                onPress={() => handleWorkspacePress(workspace)}
-              />
+            {data.data.map((workspace, index) => (
+              <FadeIn key={workspace.id} spring delay={index * 80}>
+                <WorkspaceCard
+                  workspace={workspace}
+                  onPress={() => handleWorkspacePress(workspace)}
+                />
+              </FadeIn>
             ))}
           </View>
         )}
@@ -198,13 +213,15 @@ export default function WorkspacesScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
-        onPress={handleCreate}
-        activeOpacity={0.8}
-      >
-        <Text style={[styles.fabText, { color: theme.colors.text.onPrimary }]}>+</Text>
-      </TouchableOpacity>
+      <PressScale lift>
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+          onPress={handleCreate}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.fabText, { color: theme.colors.text.onPrimary }]}>+</Text>
+        </TouchableOpacity>
+      </PressScale>
     </SafeAreaView>
   );
 }
@@ -243,7 +260,11 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    ...({ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 } as any),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
   },
   avatarBubbleText: {
     fontSize: 16,
@@ -300,7 +321,11 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    ...({ shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 } as any),
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   fabText: {
     fontSize: 28,

@@ -98,6 +98,8 @@ export class ProjectService {
         email: user.email,
         name: user.name,
         avatarUrl: user.avatarUrl,
+        provider: user.provider ?? 'email',
+        emailVerified: user.emailVerified ?? false,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
@@ -130,12 +132,14 @@ export class ProjectService {
       status: project.status as ProjectStatus,
       owner: owner
         ? {
-            id: owner.id,
-            email: owner.email,
-            name: owner.name,
-            avatarUrl: owner.avatarUrl,
-            createdAt: owner.createdAt,
-            updatedAt: owner.updatedAt,
+        id: owner.id,
+        email: owner.email,
+        name: owner.name,
+        avatarUrl: owner.avatarUrl,
+        provider: owner.provider ?? 'email',
+        emailVerified: owner.emailVerified ?? false,
+        createdAt: owner.createdAt,
+        updatedAt: owner.updatedAt,
           }
         : null,
     };
@@ -203,6 +207,8 @@ export class ProjectService {
                 email: owner.email,
                 name: owner.name,
                 avatarUrl: owner.avatarUrl,
+                provider: owner.provider ?? 'email',
+                emailVerified: owner.emailVerified ?? false,
                 createdAt: owner.createdAt,
                 updatedAt: owner.updatedAt,
               }
@@ -224,28 +230,23 @@ export class ProjectService {
   userId: string,
   status?: ProjectStatus,
   page: number = 1,
-  limit: number = 50
+  limit: number = 50,
+  workspaceId?: string
 ): Promise<PaginatedResponse<ProjectWithOwner>> {
 
-  const memberships = await prisma.workspaceMember.findMany({
-    where: {
-      userId,
-    },
-    select: {
-      workspaceId: true,
-    },
-  });
-
-  const workspaceIds = memberships.map(
-    (membership) => membership.workspaceId
-  );
-
-  const where = {
-    workspaceId: {
-      in: workspaceIds,
-    },
+  const where: any = {
     ...(status && { status }),
   };
+
+  if (workspaceId) {
+    where.workspaceId = workspaceId;
+  } else {
+    const memberships = await prisma.workspaceMember.findMany({
+      where: { userId },
+      select: { workspaceId: true },
+    });
+    where.workspaceId = { in: memberships.map((m) => m.workspaceId) };
+  }
 
   const projects = await prisma.project.findMany({
     where,
@@ -279,6 +280,8 @@ export class ProjectService {
               email: owner.email,
               name: owner.name,
               avatarUrl: owner.avatarUrl,
+              provider: owner.provider ?? 'email',
+              emailVerified: owner.emailVerified ?? false,
               createdAt: owner.createdAt,
               updatedAt: owner.updatedAt,
             }

@@ -8,8 +8,8 @@ export interface SearchResult {
 }
 
 export const searchApi = {
-  global: async (query: string): Promise<SearchResult> => {
-    const response = await api.get('/api/v1/search', { params: { q: query } });
+  global: async (query: string, workspaceId?: string): Promise<SearchResult> => {
+    const response = await api.get('/api/v1/search', { params: { q: query, workspaceId } });
     return response.data.data;
   },
 };

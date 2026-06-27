@@ -18,6 +18,8 @@ import { Heading } from '../../../../components/typography/Heading';
 import { LoadingView } from '../../../../components/feedback/LoadingView';
 import { ErrorState } from '../../../../components/feedback/ErrorState';
 import { EmptyState } from '../../../../components/feedback/EmptyState';
+import { FadeIn } from '../../../../components/animations/FadeIn';
+import { PressScale } from '../../../../components/animations/PressScale';
 import { getInitials } from '../../../../utils/formatting';
 import { formatDate } from '../../../../utils/date';
 import { triggerHaptic } from '../../../../utils/haptics';
@@ -161,52 +163,55 @@ export default function MembersScreen() {
       )}
 
       {members.length > 0 && (
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.colors.primary} colors={[theme.colors.primary]} />
-          }
-        >
-          <View style={styles.list}>
-            {members.map((member, idx) => {
-              const badge = roleBadgeColors[member.role];
-              return (
-                <TouchableOpacity
-                  key={member.id}
-                  style={[
-                    styles.memberRow,
-                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                    idx === 0 && { borderTopLeftRadius: 14, borderTopRightRadius: 14 },
-                    idx === members.length - 1 && { borderBottomLeftRadius: 14, borderBottomRightRadius: 14 },
-                    idx > 0 && { borderTopWidth: 0 },
-                  ]}
-                  onPress={() => handleMemberAction(member)}
-                  activeOpacity={isAdmin && member.role !== 'owner' ? 0.6 : 1}
-                  disabled={!isAdmin || member.role === 'owner'}
-                >
-                  <View style={[styles.memberAvatar, { backgroundColor: theme.colors.primaryLight }]}>
-                    <Text style={[styles.memberAvatarText, { color: theme.colors.primary }]}>
-                      {getInitials(member.user.name)}
-                    </Text>
-                  </View>
-                  <View style={styles.memberInfo}>
-                    <Text weight="semibold" variant="bodyMedium">{member.user.name}</Text>
-                    <Text variant="bodySmall" color="secondary">{member.user.email}</Text>
-                    <Text variant="caption" color="tertiary">
-                      Joined {formatDate(member.joinedAt)}
-                    </Text>
-                  </View>
-                  <View style={[styles.roleBadge, { backgroundColor: badge.bg }]}>
-                    <Text style={[styles.roleText, { color: badge.text }]} variant="caption" weight="semibold">
-                      {badge.label}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </ScrollView>
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.colors.primary} colors={[theme.colors.primary]} />
+            }
+          >
+            <FadeIn spring>
+              <View style={styles.list}>
+                {members.map((member, idx) => {
+                  const badge = roleBadgeColors[member.role];
+                  return (
+                    <PressScale key={member.id} lift>
+                      <TouchableOpacity
+                        style={[
+                          styles.memberRow,
+                          { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                          idx === 0 && { borderTopLeftRadius: 14, borderTopRightRadius: 14 },
+                          idx === members.length - 1 && { borderBottomLeftRadius: 14, borderBottomRightRadius: 14 },
+                          idx > 0 && { borderTopWidth: 0 },
+                        ]}
+                        onPress={() => handleMemberAction(member)}
+                        activeOpacity={isAdmin && member.role !== 'owner' ? 0.6 : 1}
+                        disabled={!isAdmin || member.role === 'owner'}
+                      >
+                        <View style={[styles.memberAvatar, { backgroundColor: theme.colors.primaryLight }]}>
+                          <Text style={[styles.memberAvatarText, { color: theme.colors.primary }]}>
+                            {getInitials(member.user.name)}
+                          </Text>
+                        </View>
+                        <View style={styles.memberInfo}>
+                          <Text weight="semibold" variant="bodyMedium">{member.user.name}</Text>
+                          <Text variant="bodySmall" color="secondary">{member.user.email}</Text>
+                          <Text variant="caption" color="tertiary">
+                            Joined {formatDate(member.joinedAt)}
+                          </Text>
+                        </View>
+                        <View style={[styles.roleBadge, { backgroundColor: badge.bg }]}>
+                          <Text style={[styles.roleText, { color: badge.text }]} variant="caption" weight="semibold">
+                            {badge.label}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    </PressScale>
+                  );
+                })}
+              </View>
+            </FadeIn>
+          </ScrollView>
       )}
     </SafeAreaView>
   );

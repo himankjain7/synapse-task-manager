@@ -40,8 +40,8 @@ export const analyticsApi = {
     const response = await api.get(`/api/v1/analytics/projects/${projectId}`);
     return response.data.data;
   },
-  getUserAnalytics: async (): Promise<UserAnalytics> => {
-    const response = await api.get('/api/v1/analytics/user');
+  getUserAnalytics: async (workspaceId?: string): Promise<UserAnalytics> => {
+    const response = await api.get('/api/v1/analytics/user', { params: { workspaceId } });
     return response.data.data;
   },
 };

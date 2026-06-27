@@ -23,7 +23,8 @@ export const transformError = (error: any): ApiError => {
       const data = error.response.data;
       const status = error.response.status;
       
-      const message = data?.message || error.message || 'An unexpected error occurred';
+      // New envelope format: error field is the primary message
+      const message = data?.error || data?.message || error.message || 'An unexpected error occurred';
       const code = data?.code;
       const errors = data?.errors;
       

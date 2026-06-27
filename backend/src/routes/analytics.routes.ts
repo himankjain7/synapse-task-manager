@@ -6,6 +6,7 @@ const router = Router();
 
 router.use(requireAuth);
 
+router.get('/dashboard', AnalyticsController.getDashboardAnalytics);
 router.get('/workspaces/:workspaceId', AnalyticsController.getWorkspaceAnalytics);
 router.get('/projects/:projectId', AnalyticsController.getProjectAnalytics);
 router.get('/user', AnalyticsController.getUserAnalytics);

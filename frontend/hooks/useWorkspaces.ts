@@ -3,7 +3,6 @@ import { workspaceApi } from '../services/workspace';
 import { QueryKeys } from '../constants/queryKeys';
 import {
   CreateWorkspaceInput,
-  UpdateWorkspaceInput,
   InviteMemberInput,
   UpdateMemberRoleInput,
 } from '../types/workspace';
@@ -35,18 +34,6 @@ export function useCreateWorkspace() {
   });
 }
 
-export function useUpdateWorkspace(id: string | undefined) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: UpdateWorkspaceInput) => workspaceApi.update(id!, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.workspaces.detail(id!) });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.workspaces.lists() });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
-    },
-  });
-}
-
 export function useDeleteWorkspace() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -59,10 +46,13 @@ export function useDeleteWorkspace() {
 }
 
 export function useMembers(workspaceId: string | undefined) {
+  const queryKey = QueryKeys.workspaces.members(workspaceId!);
+  const enabled = !!workspaceId;
+  console.log("[DEBUG useMembers] input:", { workspaceId, enabled, queryKey });
   return useQuery({
-    queryKey: QueryKeys.workspaces.members(workspaceId!),
+    queryKey,
     queryFn: () => workspaceApi.getMembers(workspaceId!),
-    enabled: !!workspaceId,
+    enabled,
   });
 }
 

@@ -432,6 +432,8 @@ export class AuthService {
       email: user.email,
       name: user.name,
       avatarUrl: user.avatarUrl,
+      provider: user.provider,
+      emailVerified: user.emailVerified,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

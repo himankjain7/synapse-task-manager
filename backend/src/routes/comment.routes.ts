@@ -146,6 +146,37 @@ router.delete(
 );
 
 /**
+ * POST /tasks/:taskId/comments/:id/reactions
+ * Add an emoji reaction to a comment
+ *
+ * Request body:
+ * {
+ *   emoji: string
+ * }
+ *
+ * Response: 201 Created
+ */
+router.post(
+  '/:id/reactions',
+  validateUUID('id'),
+  validateBody,
+  validateRequired(['emoji']),
+  CommentController.addReaction
+);
+
+/**
+ * DELETE /tasks/:taskId/comments/:id/reactions/:emoji
+ * Remove an emoji reaction from a comment
+ *
+ * Response: 200 OK
+ */
+router.delete(
+  '/:id/reactions/:emoji',
+  validateUUID('id'),
+  CommentController.removeReaction
+);
+
+/**
  * GET /tasks/:taskId/comments/count
  * Get comment count for a task
  *

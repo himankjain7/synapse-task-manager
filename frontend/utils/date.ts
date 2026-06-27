@@ -1,11 +1,6 @@
-/**
- * Formats a date or timestamp to a human-readable calendar representation.
- * Example: June 13, 2026
- */
 export function formatDate(date: Date | string | number): string {
   const d = new Date(date);
   if (isNaN(d.getTime())) return 'Invalid date';
-  
   return d.toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'long',
@@ -13,14 +8,9 @@ export function formatDate(date: Date | string | number): string {
   });
 }
 
-/**
- * Returns a relative time string.
- * Example: "3m ago", "2h ago", "Just now"
- */
 export function formatRelativeTime(date: Date | string | number): string {
   const d = new Date(date);
   if (isNaN(d.getTime())) return 'Invalid date';
-
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffSec = Math.floor(diffMs / 1000);
@@ -33,26 +23,5 @@ export function formatRelativeTime(date: Date | string | number): string {
   if (diffMin < 60) return `${diffMin}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
-
-  return d.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-/**
- * Formats a date with time.
- * Example: Jun 13, 2026, 5:00 PM
- */
-export function formatDateTime(date: Date | string | number): string {
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return 'Invalid date';
-
-  return d.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }

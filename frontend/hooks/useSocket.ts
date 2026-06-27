@@ -2,13 +2,21 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore, AppNotification } from '../store/notificationStore';
+import { usePresenceStore } from '../store/presenceStore';
 import { connectSocket, disconnectSocket, getSocket } from '../services/socket';
 import { QueryKeys } from '../constants/queryKeys';
+
+interface SubtaskSocketEvent {
+  taskId: string;
+  subtask?: { id: string; [key: string]: unknown };
+  subtaskId?: string;
+}
 
 export function useSocketEvents() {
   const queryClient = useQueryClient();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const addNotification = useNotificationStore((s) => s.addNotification);
+  const { setOnlineUsers, addOnlineUser, removeOnlineUser, addViewer, removeViewer } = usePresenceStore();
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -118,6 +126,39 @@ export function useSocketEvents() {
       invalidateAnalytics();
     };
 
+    const handleSubtaskEvent = (payload: SubtaskSocketEvent) => {
+      if (payload.taskId) {
+        queryClient.invalidateQueries({ queryKey: ['subtasks', payload.taskId] });
+        queryClient.invalidateQueries({ queryKey: ['task-activity', payload.taskId] });
+        queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.detail(payload.taskId) });
+      }
+      invalidateAnalytics();
+    };
+
+    const handlePresenceList = (payload: { projectId: string; onlineUserIds: string[] }) => {
+      setOnlineUsers(payload.projectId, payload.onlineUserIds);
+    };
+
+    const handlePresenceOnline = (payload: { userId: string; projectId?: string }) => {
+      if (payload.projectId) {
+        addOnlineUser(payload.projectId, payload.userId);
+      }
+    };
+
+    const handlePresenceOffline = (payload: { userId: string; projectId?: string }) => {
+      if (payload.projectId) {
+        removeOnlineUser(payload.projectId, payload.userId);
+      }
+    };
+
+    const handleViewingTask = (payload: { taskId: string; userId: string; userName?: string; isViewing: boolean }) => {
+      if (payload.isViewing && payload.userName) {
+        addViewer(payload.taskId, payload.userId, payload.userName);
+      } else {
+        removeViewer(payload.taskId, payload.userId);
+      }
+    };
+
     socket.on('notification', handleNotification);
     socket.on('project:created', handleProjectCreated);
     socket.on('project:updated', handleProjectUpdated);
@@ -134,6 +175,13 @@ export function useSocketEvents() {
     socket.on('attachment:deleted', handleAttachmentDeleted);
     socket.on('member:added', handleMemberAdded);
     socket.on('member:removed', handleMemberRemoved);
+    socket.on('subtask:created', handleSubtaskEvent);
+    socket.on('subtask:updated', handleSubtaskEvent);
+    socket.on('subtask:deleted', handleSubtaskEvent);
+    socket.on('presence:list', handlePresenceList);
+    socket.on('presence:online', handlePresenceOnline);
+    socket.on('presence:offline', handlePresenceOffline);
+    socket.on('viewing:task', handleViewingTask);
 
     return () => {
       socket.off('notification', handleNotification);
@@ -152,6 +200,13 @@ export function useSocketEvents() {
       socket.off('attachment:deleted', handleAttachmentDeleted);
       socket.off('member:added', handleMemberAdded);
       socket.off('member:removed', handleMemberRemoved);
+      socket.off('subtask:created', handleSubtaskEvent);
+      socket.off('subtask:updated', handleSubtaskEvent);
+      socket.off('subtask:deleted', handleSubtaskEvent);
+      socket.off('presence:list', handlePresenceList);
+      socket.off('presence:online', handlePresenceOnline);
+      socket.off('presence:offline', handlePresenceOffline);
+      socket.off('viewing:task', handleViewingTask);
     };
-  }, [isAuthenticated, queryClient, addNotification]);
+  }, [isAuthenticated, queryClient, addNotification, setOnlineUsers, addOnlineUser, removeOnlineUser, addViewer, removeViewer]);
 }

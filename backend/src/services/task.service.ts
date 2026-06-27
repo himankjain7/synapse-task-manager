@@ -1,6 +1,7 @@
 import prisma from '../config/db';
 import { ProjectService } from './project.service';
 import { ActivityService } from './activity.service';
+import { AuthzService } from './authz.service';
 import {
   TaskWithAssignee,
   TaskWithDetails,
@@ -60,7 +61,7 @@ export class TaskService {
       throw new Error('Permission denied: not a member of this workspace');
     }
 
-    // Verify assignee exists (if provided)
+    // Verify assignee exists and is a workspace member (if provided)
     if (data.assignedTo) {
       const assignee = await prisma.user.findUnique({
         where: { id: data.assignedTo },
@@ -68,6 +69,19 @@ export class TaskService {
 
       if (!assignee) {
         throw new Error('Assigned user not found');
+      }
+
+      const isMember = await prisma.workspaceMember.findUnique({
+        where: {
+          workspaceId_userId: {
+            workspaceId: project.workspaceId,
+            userId: data.assignedTo,
+          },
+        },
+      });
+
+      if (!isMember) {
+        throw new Error('Assigned user is not a member of this workspace');
       }
     }
 
@@ -120,6 +134,9 @@ export class TaskService {
         label: true,
       },
     },
+    _count: {
+      select: { comments: true, attachments: true },
+    },
   },
 });
 
@@ -147,13 +164,16 @@ export class TaskService {
       ...task,
       labels: taskLabels,
       assignee: assignee ? {
-    id: assignee.id,
-    email: assignee.email,
-    name: assignee.name,
-    avatarUrl: assignee.avatarUrl,
-    createdAt: assignee.createdAt,
-    updatedAt: assignee.updatedAt,
+        id: assignee.id,
+        email: assignee.email,
+        name: assignee.name,
+        avatarUrl: assignee.avatarUrl,
+        provider: assignee.provider ?? 'email',
+        emailVerified: assignee.emailVerified ?? false,
+        createdAt: assignee.createdAt,
+        updatedAt: assignee.updatedAt,
   } : null,
+  workspaceId: project.workspaceId,
   project: {
     ...project,
     status: project.status as ProjectStatus,
@@ -224,6 +244,10 @@ export class TaskService {
       skip: (page - 1) * limit,
       take: limit,
       orderBy: { position: 'asc' },
+      include: {
+        labels: { include: { label: true } },
+        _count: { select: { comments: true, attachments: true } },
+      },
     });
 
     const total = await prisma.task.count({ where });
@@ -268,6 +292,7 @@ export class TaskService {
             label: true,
           },
         },
+        _count: { select: { comments: true, attachments: true } },
       },
     });
 
@@ -290,8 +315,8 @@ export class TaskService {
       throw new Error('Permission denied: not a member of this workspace');
     }
 
-    // Verify new assignee exists (if provided)
-    const assigneeId = data.assignedTo ?? (data as any).assigneeId;
+    // Determine assignee from either field name
+    const assigneeId = data.assignedTo ?? data.assigneeId;
     if (assigneeId !== undefined && assigneeId) {
       const assignee = await prisma.user.findUnique({
         where: { id: assigneeId },
@@ -299,6 +324,20 @@ export class TaskService {
 
       if (!assignee) {
         throw new Error('Assigned user not found');
+      }
+
+      // Verify assignee is a member of this workspace
+      const isMember = await prisma.workspaceMember.findUnique({
+        where: {
+          workspaceId_userId: {
+            workspaceId: project.workspaceId,
+            userId: assigneeId,
+          },
+        },
+      });
+
+      if (!isMember) {
+        throw new Error('Assigned user is not a member of this workspace');
       }
     }
 
@@ -429,6 +468,8 @@ export class TaskService {
       throw new Error('Task not found');
     }
 
+    await AuthzService.requireProjectAccess(existing.projectId, userId);
+
     const oldStatus = existing.status as string;
 
     const task = await prisma.task.update({
@@ -465,6 +506,8 @@ export class TaskService {
     if (!existing) {
       throw new Error('Task not found');
     }
+
+    await AuthzService.requireProjectAccess(existing.projectId, actingUserId);
 
     if (assigneeId) {
       const user = await prisma.user.findUnique({
@@ -560,7 +603,8 @@ export class TaskService {
    * @param newPosition - New position in list
    * @returns Updated task
    */
-  static async reorderTask(taskId: string, newPosition: number): Promise<TaskWithAssignee> {
+  static async reorderTask(taskId: string, userId: string, newPosition: number): Promise<TaskWithAssignee> {
+    await AuthzService.requireTaskAccess(taskId, userId);
     const task = await prisma.task.update({
       where: { id: taskId },
       data: { position: newPosition, updatedAt: new Date() },
@@ -579,8 +623,18 @@ export class TaskService {
    * @returns Array of updated tasks
    */
   static async bulkUpdateTasks(
-    data: BulkUpdateTaskRequest
+    data: BulkUpdateTaskRequest,
+    userId: string
   ): Promise<TaskWithAssignee[]> {
+    const tasks = await prisma.task.findMany({
+      where: { id: { in: data.taskIds } },
+      select: { id: true, projectId: true },
+    });
+    const projectIds = [...new Set(tasks.map((t) => t.projectId))];
+    for (const pid of projectIds) {
+      await AuthzService.requireProjectAccess(pid, userId);
+    }
+
     const updates = await Promise.all(
       data.taskIds.map((taskId) =>
         prisma.task.update({
@@ -601,6 +655,43 @@ export class TaskService {
   }
 
   /**
+   * Bulk delete tasks
+   *
+   * Deletes multiple tasks at once.
+   *
+   * @param taskIds - Array of task IDs to delete
+   * @param userId - User performing the deletion
+   * @returns Number of deleted tasks
+   */
+  static async bulkDeleteTasks(taskIds: string[], userId: string): Promise<number> {
+    const tasks = await prisma.task.findMany({
+      where: { id: { in: taskIds } },
+      include: { project: { select: { workspaceId: true } } },
+    });
+
+    const projectIds = [...new Set(tasks.map((t) => t.projectId))];
+    for (const pid of projectIds) {
+      await AuthzService.requireProjectAccess(pid, userId);
+    }
+
+    for (const task of tasks) {
+      await ActivityService.log({
+        workspaceId: task.project.workspaceId,
+        taskId: task.id,
+        userId,
+        action: 'task_deleted',
+        details: { title: task.title },
+      });
+    }
+
+    const result = await prisma.task.deleteMany({
+      where: { id: { in: taskIds } },
+    });
+
+    return result.count;
+  }
+
+  /**
    * Get tasks assigned to user
    *
    * Returns all tasks assigned to specified user across all projects/workspaces.
@@ -615,9 +706,9 @@ export class TaskService {
     userId: string,
     status?: TaskStatus,
     page: number = 1,
-    limit: number = 50
+    limit: number = 50,
+    workspaceId?: string
   ): Promise<PaginatedResponse<TaskWithDetails>> {
-    // Verify user exists
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -631,12 +722,23 @@ export class TaskService {
       where.status = status;
     }
 
+    if (workspaceId) {
+      const projectIds = await prisma.project.findMany({
+        where: { workspaceId },
+        select: { id: true },
+      });
+      where.projectId = { in: projectIds.map((p) => p.id) };
+    }
+
     // Get tasks
     const tasks = await prisma.task.findMany({
       where,
       skip: (page - 1) * limit,
       take: limit,
       orderBy: { dueDate: 'asc' },
+      include: {
+        _count: { select: { comments: true, attachments: true } },
+      },
     });
 
     const total = await prisma.task.count({ where });
@@ -666,6 +768,7 @@ export class TaskService {
                 updatedAt: user.updatedAt,
               }
             : null,
+          workspaceId: project.workspaceId,
           project: {
             ...project,
             status: project.status as ProjectStatus,
@@ -691,11 +794,32 @@ export class TaskService {
    * @param limit - Maximum tasks to return
    * @returns List of overdue tasks
    */
-  static async getOverdueTasks(limit: number = 50): Promise<TaskWithDetails[]> {
+  static async getOverdueTasks(userId: string, limit: number = 50, workspaceId?: string): Promise<TaskWithDetails[]> {
     const now = new Date();
+
+    let projectIds: string[];
+    if (workspaceId) {
+      const projects = await prisma.project.findMany({
+        where: { workspaceId },
+        select: { id: true },
+      });
+      projectIds = projects.map((p) => p.id);
+    } else {
+      const memberWorkspaces = await prisma.workspaceMember.findMany({
+        where: { userId },
+        select: { workspaceId: true },
+      });
+      const workspaceIds = memberWorkspaces.map((m) => m.workspaceId);
+      const projects = await prisma.project.findMany({
+        where: { workspaceId: { in: workspaceIds } },
+        select: { id: true },
+      });
+      projectIds = projects.map((p) => p.id);
+    }
 
     const tasks = await prisma.task.findMany({
       where: {
+        projectId: { in: projectIds },
         dueDate: { lt: now },
         status: { not: TaskStatus.done as any },
       },
@@ -734,6 +858,7 @@ export class TaskService {
                 updatedAt: assignee.updatedAt,
               }
             : null,
+          workspaceId: project.workspaceId,
           project: {
             ...project,
             status: project.status as ProjectStatus,
@@ -751,6 +876,11 @@ export class TaskService {
    * @private
    */
   private static async enrichTaskWithAssignee(task: any): Promise<TaskWithAssignee> {
+    let labels: any[] | undefined = task.labels;
+    if (labels && labels.length > 0 && labels[0]?.label) {
+      labels = labels.map((a: any) => a.label);
+    }
+
     const assignee = task.assignedTo
       ? await prisma.user.findUnique({
           where: { id: task.assignedTo },
@@ -761,6 +891,7 @@ export class TaskService {
       ...task,
       status: task.status as any as TaskStatus,
       priority: task.priority as any as TaskPriority,
+      labels: labels ?? [],
       assignee: assignee
         ? {
             id: assignee.id,

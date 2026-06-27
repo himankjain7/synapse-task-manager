@@ -5,10 +5,10 @@ import { useTheme } from '../hooks/useTheme';
 import { useToastStore, ToastType } from '../store/toastStore';
 import { Text } from './typography/Text';
 
-const toastColors: Record<ToastType, { bg: string; text: string }> = {
-  success: { bg: '#10B981', text: '#FFFFFF' },
-  error: { bg: '#EF4444', text: '#FFFFFF' },
-  info: { bg: '#4F46E5', text: '#FFFFFF' },
+const toastColors: Record<ToastType, { bg: string; text: string; icon: string }> = {
+  success: { bg: '#10B981', text: '#FFFFFF', icon: '✓' },
+  error: { bg: '#EF4444', text: '#FFFFFF', icon: '✕' },
+  info: { bg: '#4F46E5', text: '#FFFFFF', icon: 'ℹ' },
 };
 
 function ToastItem({ id, message, type }: { id: string; message: string; type: ToastType }) {
@@ -19,16 +19,12 @@ function ToastItem({ id, message, type }: { id: string; message: string; type: T
   const hideToast = useToastStore((s) => s.hideToast);
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 0, duration: 250, useNativeDriver: true }),
-    ]).start();
+    Animated.spring(opacity, { toValue: 1, friction: 9, tension: 100, useNativeDriver: true }).start();
+    Animated.spring(translateY, { toValue: 0, friction: 9, tension: 100, useNativeDriver: true }).start();
 
     const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: -20, duration: 200, useNativeDriver: true }),
-      ]).start(() => hideToast(id));
+      Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+      Animated.timing(translateY, { toValue: -10, duration: 200, useNativeDriver: true }).start(() => hideToast(id));
     }, 2800);
 
     return () => clearTimeout(timer);
@@ -43,6 +39,7 @@ function ToastItem({ id, message, type }: { id: string; message: string; type: T
         { backgroundColor: colors.bg, opacity, transform: [{ translateY }], marginTop: insets.top + 8 },
       ]}
     >
+      <Text style={[styles.toastIcon, { color: colors.text }]}>{colors.icon}</Text>
       <Text style={[styles.message, { color: colors.text }]}>{message}</Text>
     </Animated.View>
   );
@@ -73,8 +70,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   toast: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 13,
     borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -83,7 +82,9 @@ const styles = StyleSheet.create({
     elevation: 8,
     maxWidth: '100%',
     alignSelf: 'center',
+    gap: 8,
   },
+  toastIcon: { fontSize: 15, fontWeight: '700' },
   message: {
     fontSize: 14,
     fontWeight: '600',
