@@ -4,6 +4,8 @@ import { useTheme } from '../../hooks/useTheme';
 import { Text } from '../typography/Text';
 import { Heading } from '../typography/Heading';
 import { Spacer } from '../common/Spacer';
+import { PressScale } from '../animations/PressScale';
+import { FadeIn } from '../animations/FadeIn';
 
 export interface ErrorStateProps {
   title?: string;
@@ -13,7 +15,7 @@ export interface ErrorStateProps {
 }
 
 export function ErrorState({
-  title = 'An error occurred',
+  title = 'Something went wrong',
   message = 'We encountered an error loading this content. Please check your connection and try again.',
   onRetry,
   retryLabel = 'Try Again',
@@ -21,65 +23,40 @@ export function ErrorState({
   const theme = useTheme();
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.errorIconCircle, { backgroundColor: theme.colors.dangerLight }]}>
-        <Text style={{ fontSize: 24, color: theme.colors.danger, fontWeight: 'bold' }}>!</Text>
+    <FadeIn slide delay={100}>
+      <View style={styles.container}>
+        <View style={[styles.iconContainer, { backgroundColor: theme.colors.dangerLight }]}>
+          <Text style={styles.emoji}>⚠️</Text>
+        </View>
+        <Spacer size="xl" />
+        <Heading level={3} align="center" style={{ color: theme.colors.text.primary }}>{title}</Heading>
+        <Spacer size="sm" />
+        <Text variant="bodyMedium" color="tertiary" align="center" style={styles.message}>{message}</Text>
+        {onRetry && (
+          <>
+            <Spacer size="xl" />
+            <PressScale scaleTo={0.95}>
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: theme.colors.primary }]}
+                onPress={onRetry}
+                activeOpacity={0.85}
+                accessibilityLabel={retryLabel}
+                accessibilityRole="button"
+              >
+                <Text variant="bodyMedium" color="onPrimary" weight="semibold">{retryLabel}</Text>
+              </TouchableOpacity>
+            </PressScale>
+          </>
+        )}
       </View>
-
-      <Spacer size="lg" />
-      <Heading level={3} align="center" style={{ color: theme.colors.danger }}>
-        {title}
-      </Heading>
-      <Spacer size="xs" />
-      <Text variant="bodyMedium" color="secondary" align="center" style={styles.message}>
-        {message}
-      </Text>
-
-      {onRetry && (
-        <>
-          <Spacer size="xl" />
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.colors.primary }]}
-            onPress={onRetry}
-            activeOpacity={0.8}
-          >
-            <Text variant="bodyMedium" color="onPrimary" weight="semibold">
-              {retryLabel}
-            </Text>
-          </TouchableOpacity>
-        </>
-      )}
-    </View>
+    </FadeIn>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  errorIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  message: {
-    maxWidth: 280,
-    lineHeight: 20,
-  },
-  button: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
+  container: { padding: 32, alignItems: 'center', justifyContent: 'center' },
+  iconContainer: { width: 72, height: 72, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  emoji: { fontSize: 28 },
+  message: { maxWidth: 280, lineHeight: 20 },
+  button: { paddingVertical: 14, paddingHorizontal: 28, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 });
-
-export default ErrorState;

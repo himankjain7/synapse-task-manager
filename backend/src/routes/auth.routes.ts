@@ -85,7 +85,6 @@ router.post(
   validateBody,
   validateRequired(['email', 'password']),
   validateEmailField('email'),
-  validatePasswordField('password'),
   AuthController.login
 );
 
@@ -119,6 +118,22 @@ router.post('/refresh', AuthController.refreshToken);
  * Response: 200 OK
  */
 router.post('/logout', AuthController.logout);
+
+/**
+ * POST /auth/google
+ * Sign in or register with Google ID token
+ *
+ * Receives a Google ID token from the frontend (expo-auth-session).
+ * Verifies the token server-side, finds or creates user,
+ * and returns JWT tokens. On first login, auto-creates workspace.
+ *
+ * Request body:
+ * { idToken: string }
+ *
+ * Response: 200 OK
+ * { user, token, expiresIn, isNewUser, workspace? }
+ */
+router.post('/google', AuthController.googleLogin);
 
 /**
  * GET /auth/google/login
@@ -200,5 +215,8 @@ router.get('/me', requireAuth, AuthController.getMe);
  * }
  */
 router.post('/verify-token', AuthController.verifyToken);
+
+router.patch('/profile', requireAuth, AuthController.updateProfile);
+router.post('/change-password', requireAuth, AuthController.changePassword);
 
 export default router;

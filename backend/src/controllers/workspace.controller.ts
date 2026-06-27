@@ -3,37 +3,13 @@ import { WorkspaceService } from '../services/workspace.service';
 import { asyncHandler } from '../middleware/error.middleware';
 import { APIError, ForbiddenError, NotFoundError } from '../middleware/error.middleware';
 import { CreateWorkspaceRequest, UpdateWorkspaceRequest, WorkspaceMemberRole } from '../models';
+import prisma from '../config/db';
+import { getIo } from '../socket';
+import { NotificationService } from '../services/notification.service';
+import { sendSuccess } from '../utils/response';
+import { safeSideEffect } from '../utils/safeSideEffect';
 
-/**
- * Workspace Controller
- *
- * Handles HTTP requests for workspace operations:
- * - Create/read/update/delete workspaces
- * - Manage workspace members
- * - Handle role-based access control
- *
- * All endpoints require authentication (checked by middleware).
- * Authorization is checked per endpoint based on user role.
- */
 export class WorkspaceController {
-  /**
-   * POST /workspaces
-   * Create a new workspace
-   *
-   * Request body:
-   * {
-   *   name: string (required, 1-100 chars),
-   *   description?: string (max 500 chars),
-   *   logo?: string (hex color)
-   * }
-   *
-   * Response: 201 Created
-   * Workspace object with authenticated user as OWNER member
-   *
-   * Errors:
-   * - 400: Invalid input
-   * - 401: Not authenticated
-   */
   static createWorkspace = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     if (!userId) {
@@ -41,28 +17,25 @@ export class WorkspaceController {
     }
 
     const data: CreateWorkspaceRequest = req.body;
-
     const workspace = await WorkspaceService.createWorkspace(userId, data);
 
-    res.status(201).json({
-      success: true,
-      data: workspace,
-      message: 'Workspace created',
-      timestamp: new Date(),
-    });
+    if (workspace) {
+      await NotificationService.notify({
+        recipientId: userId, actorId: userId,
+        type: 'workspace_created', title: 'Workspace Created',
+        message: `created workspace "${workspace.name}"`,
+        workspaceId: workspace.id,
+        skipSelf: false,
+      });
+      await safeSideEffect(async () => {
+        const io = getIo();
+        io.to(`workspace:${workspace.id}`).emit('workspace:created', { workspace });
+      }, 'socket:workspace:created');
+    }
+
+    sendSuccess(res, workspace, 201);
   });
 
-  /**
-   * GET /workspaces/:id
-   * Get workspace details
-   *
-   * Response: 200 OK
-   * Workspace object with owner information
-   *
-   * Errors:
-   * - 404: Workspace not found
-   * - 401: Not a member
-   */
   static getWorkspace = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -71,7 +44,6 @@ export class WorkspaceController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    // Verify user is member of workspace
     const hasAccess = await WorkspaceService.canAccessWorkspace(id, userId);
     if (!hasAccess) {
       throw new ForbiddenError('You do not have access to this workspace');
@@ -82,24 +54,9 @@ export class WorkspaceController {
       throw new NotFoundError('Workspace', id);
     }
 
-    res.status(200).json({
-      success: true,
-      data: workspace,
-      timestamp: new Date(),
-    });
+    sendSuccess(res, workspace);
   });
 
-  /**
-   * GET /workspaces
-   * List user's workspaces with pagination
-   *
-   * Query params:
-   * - page: number (default 1)
-   * - limit: number (default 20, max 100)
-   *
-   * Response: 200 OK
-   * Paginated list of workspaces
-   */
   static listWorkspaces = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     if (!userId) {
@@ -111,33 +68,9 @@ export class WorkspaceController {
 
     const result = await WorkspaceService.getUserWorkspaces(userId, page, limit);
 
-    res.status(200).json({
-      success: true,
-      data: result,
-      timestamp: new Date(),
-    });
+    sendSuccess(res, result);
   });
 
-  /**
-   * PATCH /workspaces/:id
-   * Update workspace details
-   *
-   * Only workspace OWNER or ADMIN can update.
-   *
-   * Request body:
-   * {
-   *   name?: string,
-   *   description?: string,
-   *   logo?: string
-   * }
-   *
-   * Response: 200 OK
-   * Updated workspace object
-   *
-   * Errors:
-   * - 403: Not authorized
-   * - 404: Workspace not found
-   */
   static updateWorkspace = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -146,7 +79,6 @@ export class WorkspaceController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    // Check permissions
     const role = await WorkspaceService.getUserRoleInWorkspace(id, userId);
     if (role !== WorkspaceMemberRole.OWNER && role !== WorkspaceMemberRole.ADMIN) {
       throw new ForbiddenError('Only owner or admin can update workspace');
@@ -155,26 +87,22 @@ export class WorkspaceController {
     const data: UpdateWorkspaceRequest = req.body;
     const workspace = await WorkspaceService.updateWorkspace(id, userId, data);
 
-    res.status(200).json({
-      success: true,
-      data: workspace,
-      message: 'Workspace updated',
-      timestamp: new Date(),
+    const members = await prisma.workspaceMember.findMany({
+      where: { workspaceId: id },
+      select: { userId: true },
     });
+    for (const m of members) {
+      await NotificationService.notify({
+        recipientId: m.userId, actorId: userId,
+        type: 'workspace_updated', title: 'Workspace Updated',
+        message: `updated workspace "${workspace.name}"`,
+        workspaceId: id,
+      });
+    }
+
+    sendSuccess(res, workspace);
   });
 
-  /**
-   * DELETE /workspaces/:id
-   * Delete workspace (cascades to projects, tasks, comments)
-   *
-   * Only workspace OWNER can delete.
-   *
-   * Response: 204 No Content
-   *
-   * Errors:
-   * - 403: Not owner
-   * - 404: Workspace not found
-   */
   static deleteWorkspace = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -183,7 +111,6 @@ export class WorkspaceController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    // Check permissions - owner only
     const role = await WorkspaceService.getUserRoleInWorkspace(id, userId);
     if (role !== WorkspaceMemberRole.OWNER) {
       throw new ForbiddenError('Only owner can delete workspace');
@@ -194,26 +121,6 @@ export class WorkspaceController {
     res.status(204).send();
   });
 
-  /**
-   * POST /workspaces/:id/members
-   * Add member to workspace
-   *
-   * Only OWNER or ADMIN can invite members.
-   *
-   * Request body:
-   * {
-   *   email: string (email of user to invite),
-   *   role: WorkspaceMemberRole (OWNER/ADMIN/MEMBER/GUEST)
-   * }
-   *
-   * Response: 201 Created
-   * WorkspaceMember object with user details
-   *
-   * Errors:
-   * - 400: User not found
-   * - 403: Not authorized to invite
-   * - 409: User already member
-   */
   static addMember = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -222,7 +129,6 @@ export class WorkspaceController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    // Check permissions
     const role = await WorkspaceService.getUserRoleInWorkspace(id, userId);
     if (role !== WorkspaceMemberRole.OWNER && role !== WorkspaceMemberRole.ADMIN) {
       throw new ForbiddenError('Only owner or admin can add members');
@@ -230,25 +136,22 @@ export class WorkspaceController {
 
     const member = await WorkspaceService.addWorkspaceMember(id, userId, req.body);
 
-    res.status(201).json({
-      success: true,
-      data: member,
-      message: 'Member added',
-      timestamp: new Date(),
-    });
+    if (member) {
+      await NotificationService.notify({
+        recipientId: member.userId, actorId: userId,
+        type: 'member_added', title: 'Member Added',
+        message: `added you to workspace`,
+        workspaceId: id,
+      });
+      await safeSideEffect(async () => {
+        const io = getIo();
+        io.to(`workspace:${id}`).emit('member:added', { member });
+      }, 'socket:member:added');
+    }
+
+    sendSuccess(res, member, 201);
   });
 
-  /**
-   * GET /workspaces/:id/members
-   * List workspace members with pagination
-   *
-   * Query params:
-   * - page: number (default 1)
-   * - limit: number (default 20)
-   *
-   * Response: 200 OK
-   * Paginated list of members with user info
-   */
   static getMembers = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -257,7 +160,6 @@ export class WorkspaceController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    // Verify user is member
     const hasAccess = await WorkspaceService.canAccessWorkspace(id, userId);
     if (!hasAccess) {
       throw new ForbiddenError('You do not have access to this workspace');
@@ -268,31 +170,9 @@ export class WorkspaceController {
 
     const result = await WorkspaceService.getWorkspaceMembers(id, page, limit);
 
-    res.status(200).json({
-      success: true,
-      data: result,
-      timestamp: new Date(),
-    });
+    sendSuccess(res, result);
   });
 
-  /**
-   * PATCH /workspaces/:id/members/:memberId
-   * Update member role
-   *
-   * Only OWNER can change roles.
-   *
-   * Request body:
-   * {
-   *   role: WorkspaceMemberRole (OWNER/ADMIN/MEMBER/GUEST)
-   * }
-   *
-   * Response: 200 OK
-   * Updated member object
-   *
-   * Errors:
-   * - 403: Not owner
-   * - 404: Member not found
-   */
   static updateMemberRole = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id, memberId } = req.params;
@@ -301,7 +181,6 @@ export class WorkspaceController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    // Check permissions - owner only
     const role = await WorkspaceService.getUserRoleInWorkspace(id, userId);
     if (role !== WorkspaceMemberRole.OWNER) {
       throw new ForbiddenError('Only owner can change member roles');
@@ -309,26 +188,16 @@ export class WorkspaceController {
 
     const member = await WorkspaceService.updateWorkspaceMemberRole(id, userId, memberId, req.body);
 
-    res.status(200).json({
-      success: true,
-      data: member,
-      message: 'Member role updated',
-      timestamp: new Date(),
+    await NotificationService.notify({
+      recipientId: memberId, actorId: userId,
+      type: 'role_changed', title: 'Role Changed',
+      message: `changed your role to ${member.role}`,
+      workspaceId: id,
     });
+
+    sendSuccess(res, member);
   });
 
-  /**
-   * DELETE /workspaces/:id/members/:memberId
-   * Remove member from workspace
-   *
-   * Only OWNER can remove members. Cannot remove owner.
-   *
-   * Response: 204 No Content
-   *
-   * Errors:
-   * - 403: Not owner or cannot remove owner
-   * - 404: Member not found
-   */
   static removeMember = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id, memberId } = req.params;
@@ -337,29 +206,31 @@ export class WorkspaceController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    // Check permissions - owner only
     const role = await WorkspaceService.getUserRoleInWorkspace(id, userId);
     if (role !== WorkspaceMemberRole.OWNER) {
       throw new ForbiddenError('Only owner can remove members');
     }
 
+    const targetUser = await prisma.user.findUnique({ where: { id: memberId }, select: { name: true } });
+
     await WorkspaceService.removeWorkspaceMember(id, userId, memberId);
+
+    if (targetUser) {
+      await NotificationService.notify({
+        recipientId: memberId, actorId: userId,
+        type: 'member_removed', title: 'Member Removed',
+        message: `removed you from workspace`,
+        workspaceId: id,
+      });
+      await safeSideEffect(async () => {
+        const io = getIo();
+        io.to(`workspace:${id}`).emit('member:removed', { memberId });
+      }, 'socket:member:removed');
+    }
 
     res.status(204).send();
   });
 
-  /**
-   * POST /workspaces/:id/leave
-   * Leave workspace
-   *
-   * Member leaves workspace. Owner cannot leave.
-   *
-   * Response: 204 No Content
-   *
-   * Errors:
-   * - 403: Cannot remove owner
-   * - 404: Workspace not found
-   */
   static leaveWorkspace = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -373,4 +244,3 @@ export class WorkspaceController {
     res.status(204).send();
   });
 }
-

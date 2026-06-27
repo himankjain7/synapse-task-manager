@@ -177,6 +177,8 @@ export interface User {
   passwordHash: string;
   avatarUrl: string | null;
   googleId?: string | null;
+  provider: string;
+  emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date | null;
@@ -190,6 +192,8 @@ export interface UserResponse {
   email: string;
   name: string;
   avatarUrl: string | null;
+  provider: string;
+  emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -301,6 +305,7 @@ export interface Comment {
   id: string;
   taskId: string;
   userId: string;
+  parentId?: string | null;
   content: string;
   createdAt: Date;
   updatedAt?: Date;
@@ -312,6 +317,27 @@ export interface Comment {
  */
 export interface CommentWithUser extends Comment {
   user: UserResponse;
+  parentId?: string | null;
+}
+
+/**
+ * Comment with user, replies, and reactions
+ */
+export interface CommentWithRelations extends CommentWithUser {
+  replies?: CommentWithRelations[];
+  reactions?: CommentReactionResponse[];
+}
+
+/**
+ * Comment reaction response
+ */
+export interface CommentReactionResponse {
+  id: string;
+  commentId: string;
+  userId: string;
+  emoji: string;
+  createdAt: Date;
+  user: { id: string; name: string };
 }
 
 /**
@@ -334,10 +360,9 @@ export interface Notification {
 export interface ActivityLog {
   id: string;
   workspaceId: string;
+  taskId: string | null;
   userId: string;
-  action: ActivityLogAction;
-  entityType: ActivityLogEntityType;
-  entityId: string | null;
+  action: string;
   details: Record<string, unknown>;
   createdAt: Date;
 }
@@ -393,7 +418,7 @@ export interface UpdateWorkspaceRequest {
  * Workspace member addition validation
  */
 export interface AddWorkspaceMemberRequest {
-  userId: string;
+  email: string;
   role: WorkspaceMemberRole;
 }
 
@@ -445,6 +470,7 @@ export interface UpdateTaskRequest {
   status?: TaskStatus;
   priority?: TaskPriority;
   assignedTo?: string | null;
+  assigneeId?: string | null;
   dueDate?: Date | null;
 }
 
@@ -464,6 +490,14 @@ export interface BulkUpdateTaskRequest {
 export interface CreateCommentRequest {
   taskId: string;
   content: string;
+}
+
+export interface CreateReplyRequest {
+  content: string;
+}
+
+export interface AddReactionRequest {
+  emoji: string;
 }
 
 /**
@@ -687,6 +721,17 @@ export interface LoginResponse {
  */
 export interface GoogleLoginRequest {
   idToken: string;
+}
+
+export interface GoogleLoginResponse {
+  user: UserResponse;
+  token: string;
+  expiresIn: number;
+  isNewUser: boolean;
+  workspace?: {
+    id: string;
+    name: string;
+  };
 }
 
 /**

@@ -23,7 +23,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-splash-screen"
+      "expo-splash-screen",
+      "expo-web-browser"
     ]
   }
 }

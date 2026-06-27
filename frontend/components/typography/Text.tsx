@@ -45,7 +45,7 @@ export function Text({
     {
       color: resolveColor(),
       textAlign: align,
-      fontWeight: theme.typography.weights[weight] as any,
+      fontWeight: theme.typography.weights[weight],
     },
     // Font styling according to theme tokens
     variant === 'bodyLarge' && {

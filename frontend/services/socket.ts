@@ -9,7 +9,9 @@ export function getSocket(): Socket | null {
 }
 
 export function connectSocket(): Socket {
-  if (socket?.connected) return socket;
+  if (socket?.connected) {
+    return socket;
+  }
 
   const token = useAuthStore.getState().accessToken;
 
@@ -21,17 +23,7 @@ export function connectSocket(): Socket {
     reconnectionDelay: 1000,
   });
 
-  socket.on('connect', () => {
-    console.log('[Socket] Connected:', socket?.id);
-  });
 
-  socket.on('disconnect', (reason) => {
-    console.log('[Socket] Disconnected:', reason);
-  });
-
-  socket.on('connect_error', (error) => {
-    console.log('[Socket] Connection error:', error.message);
-  });
 
   return socket;
 }

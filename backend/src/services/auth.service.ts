@@ -307,6 +307,26 @@ export class AuthService {
    * @returns Bcrypt hash of the password (includes salt and cost factor)
    * @throws Error if hashing fails
    */
+  static async updateProfile(userId: string, name: string, avatarUrl?: string): Promise<UserResponse> {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { name: name.trim(), avatarUrl: avatarUrl || null, updatedAt: new Date() },
+    });
+    return this.userToResponse(user);
+  }
+
+  static async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.passwordHash) throw new Error('User not found');
+    const isValid = await this.comparePassword(currentPassword, user.passwordHash);
+    if (!isValid) throw new Error('Current password is incorrect');
+    const passwordHash = await this.hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, updatedAt: new Date() },
+    });
+  }
+
   static async hashPassword(password: string): Promise<string> {
     try {
       // Bcrypt automatically generates a unique salt and embeds it in the hash
@@ -412,6 +432,8 @@ export class AuthService {
       email: user.email,
       name: user.name,
       avatarUrl: user.avatarUrl,
+      provider: user.provider,
+      emailVerified: user.emailVerified,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

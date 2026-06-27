@@ -16,6 +16,8 @@ import { useCreateProject } from '../../../hooks/useProjects';
 import { useToastStore } from '../../../store/toastStore';
 import { Text } from '../../../components/typography/Text';
 import { Heading } from '../../../components/typography/Heading';
+import { FadeIn } from '../../../components/animations/FadeIn';
+import { PressScale } from '../../../components/animations/PressScale';
 import { triggerHaptic } from '../../../utils/haptics';
 
 const PROJECT_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
@@ -68,13 +70,15 @@ export default function CreateProjectScreen() {
           <Text color="primary" weight="semibold">Cancel</Text>
         </TouchableOpacity>
         <Heading level={4}>New Project</Heading>
-        <TouchableOpacity onPress={handleCreate} style={styles.headerButton} disabled={isPending}>
-          {isPending ? (
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-          ) : (
-            <Text color="primary" weight="semibold">Create</Text>
-          )}
-        </TouchableOpacity>
+        <PressScale scaleTo={0.9}>
+          <TouchableOpacity onPress={handleCreate} style={styles.headerButton} disabled={isPending}>
+            {isPending ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : (
+              <Text color="primary" weight="semibold">Create</Text>
+            )}
+          </TouchableOpacity>
+        </PressScale>
       </View>
 
       <KeyboardAvoidingView
@@ -82,34 +86,37 @@ export default function CreateProjectScreen() {
         style={styles.flex}
       >
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>ICON</Text>
+          <FadeIn spring>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>ICON</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.iconRow}>
             {PROJECT_ICONS.map((em) => (
-              <TouchableOpacity
-                key={em}
-                style={[
-                  styles.iconOption,
-                  { backgroundColor: icon === em ? theme.colors.primaryLight : theme.colors.surface, borderColor: icon === em ? theme.colors.primary : theme.colors.border },
-                ]}
-                onPress={() => { setIcon(em); triggerHaptic('light'); }}
-              >
-                <Text style={styles.iconEmoji}>{em}</Text>
-              </TouchableOpacity>
+              <PressScale key={em} scaleTo={0.88}>
+                <TouchableOpacity
+                  style={[
+                    styles.iconOption,
+                    { backgroundColor: icon === em ? theme.colors.primaryLight : theme.colors.surface, borderColor: icon === em ? theme.colors.primary : theme.colors.border },
+                  ]}
+                  onPress={() => { setIcon(em); triggerHaptic('light'); }}
+                >
+                  <Text style={styles.iconEmoji}>{em}</Text>
+                </TouchableOpacity>
+              </PressScale>
             ))}
           </ScrollView>
 
           <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>COLOR</Text>
           <View style={styles.colorRow}>
             {PROJECT_COLORS.map((c) => (
-              <TouchableOpacity
-                key={c}
-                style={[
-                  styles.colorOption,
-                  { backgroundColor: c },
-                  color === c && styles.colorSelected,
-                ]}
-                onPress={() => { setColor(c); triggerHaptic('light'); }}
-              />
+              <PressScale key={c} scaleTo={0.88}>
+                <TouchableOpacity
+                  style={[
+                    styles.colorOption,
+                    { backgroundColor: c },
+                    color === c && styles.colorSelected,
+                  ]}
+                  onPress={() => { setColor(c); triggerHaptic('light'); }}
+                />
+              </PressScale>
             ))}
           </View>
 
@@ -134,6 +141,7 @@ export default function CreateProjectScreen() {
             numberOfLines={4}
             maxLength={500}
           />
+          </FadeIn>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

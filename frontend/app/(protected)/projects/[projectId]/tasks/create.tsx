@@ -16,6 +16,8 @@ import { useCreateTask } from '../../../../../hooks/useTasks';
 import { useToastStore } from '../../../../../store/toastStore';
 import { Text } from '../../../../../components/typography/Text';
 import { Heading } from '../../../../../components/typography/Heading';
+import { FadeIn } from '../../../../../components/animations/FadeIn';
+import { PressScale } from '../../../../../components/animations/PressScale';
 import { triggerHaptic } from '../../../../../utils/haptics';
 import { TaskPriority, TaskStatus } from '../../../../../types/project';
 
@@ -74,13 +76,15 @@ export default function CreateTaskScreen() {
           <Text color="primary" weight="semibold">Cancel</Text>
         </TouchableOpacity>
         <Heading level={4}>New Task</Heading>
-        <TouchableOpacity onPress={handleCreate} style={styles.headerButton} disabled={isPending}>
-          {isPending ? (
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-          ) : (
-            <Text color="primary" weight="semibold">Add</Text>
-          )}
-        </TouchableOpacity>
+        <PressScale scaleTo={0.9}>
+          <TouchableOpacity onPress={handleCreate} style={styles.headerButton} disabled={isPending}>
+            {isPending ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : (
+              <Text color="primary" weight="semibold">Add</Text>
+            )}
+          </TouchableOpacity>
+        </PressScale>
       </View>
 
       <KeyboardAvoidingView
@@ -88,7 +92,8 @@ export default function CreateTaskScreen() {
         style={styles.flex}
       >
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>TITLE</Text>
+          <FadeIn spring>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>TITLE</Text>
           <TextInput
             style={[styles.input, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text.primary }]}
             placeholder="What needs to be done?"
@@ -113,28 +118,31 @@ export default function CreateTaskScreen() {
           <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>STATUS</Text>
           <View style={styles.chipRow}>
             {STATUSES.map(s => (
-              <TouchableOpacity
-                key={s.key}
-                style={[styles.chip, { backgroundColor: status === s.key ? theme.colors.primaryLight : theme.colors.surface, borderColor: status === s.key ? theme.colors.primary : theme.colors.border }]}
-                onPress={() => { setStatus(s.key); triggerHaptic('light'); }}
-              >
-                <Text variant="bodySmall" weight={status === s.key ? 'semibold' : 'regular'} color={status === s.key ? 'primary' : 'secondary'}>{s.label}</Text>
-              </TouchableOpacity>
+              <PressScale key={s.key} scaleTo={0.93}>
+                <TouchableOpacity
+                  style={[styles.chip, { backgroundColor: status === s.key ? theme.colors.primaryLight : theme.colors.surface, borderColor: status === s.key ? theme.colors.primary : theme.colors.border }]}
+                  onPress={() => { setStatus(s.key); triggerHaptic('light'); }}
+                >
+                  <Text variant="bodySmall" weight={status === s.key ? 'semibold' : 'regular'} color={status === s.key ? 'primary' : 'secondary'}>{s.label}</Text>
+                </TouchableOpacity>
+              </PressScale>
             ))}
           </View>
 
           <Text style={[styles.sectionTitle, { color: theme.colors.text.secondary }]}>PRIORITY</Text>
           <View style={styles.chipRow}>
             {PRIORITIES.map(p => (
-              <TouchableOpacity
-                key={p.key}
-                style={[styles.chip, { backgroundColor: priority === p.key ? theme.colors.primaryLight : theme.colors.surface, borderColor: priority === p.key ? p.color : theme.colors.border }]}
-                onPress={() => { setPriority(p.key); triggerHaptic('light'); }}
-              >
-                <Text variant="bodySmall" weight={priority === p.key ? 'semibold' : 'regular'} style={{ color: priority === p.key ? p.color : theme.colors.text.secondary }}>{p.label}</Text>
-              </TouchableOpacity>
+              <PressScale key={p.key} scaleTo={0.93}>
+                <TouchableOpacity
+                  style={[styles.chip, { backgroundColor: priority === p.key ? theme.colors.primaryLight : theme.colors.surface, borderColor: priority === p.key ? p.color : theme.colors.border }]}
+                  onPress={() => { setPriority(p.key); triggerHaptic('light'); }}
+                >
+                  <Text variant="bodySmall" weight={priority === p.key ? 'semibold' : 'regular'} style={{ color: priority === p.key ? p.color : theme.colors.text.secondary }}>{p.label}</Text>
+                </TouchableOpacity>
+              </PressScale>
             ))}
           </View>
+          </FadeIn>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

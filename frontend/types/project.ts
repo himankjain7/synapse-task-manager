@@ -58,6 +58,10 @@ export interface TaskWithAssignee extends Task {
     avatarUrl: string | null;
   };
   labels: TaskLabel[];
+  _count?: {
+    comments: number;
+    attachments: number;
+  };
 }
 
 export interface CreateProjectInput {
@@ -93,6 +97,7 @@ export interface UpdateTaskInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   assigneeId?: string | null;
+  assignedTo?: string | null;
   dueDate?: string | null;
   position?: number;
   labels?: string[];
@@ -116,23 +121,36 @@ export interface TaskFilters {
 export interface Comment {
   id: string;
   taskId: string;
-  authorId: string;
+  userId: string;
+  parentId?: string | null;
   content: string;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface CommentReaction {
+  id: string;
+  commentId: string;
+  userId: string;
+  emoji: string;
+  createdAt: string;
+  user: { id: string; name: string };
+}
+
 export interface CommentWithAuthor extends Comment {
-  author: {
+  user: {
     id: string;
     name: string;
     email: string;
     avatarUrl: string | null;
   };
+  replies?: CommentWithAuthor[];
+  reactions?: CommentReaction[];
 }
 
 export interface CreateCommentInput {
   content: string;
+  parentId?: string;
 }
 
 export interface CreateLabelInput {
@@ -159,6 +177,12 @@ export interface TaskWithDetails extends TaskWithAssignee {
   estimatedHours: number | null;
   completedAt: string | null;
   workspaceId: string;
+  project?: {
+    workspaceId: string;
+    id?: string;
+    name?: string;
+    status?: ProjectStatus;
+  };
   createdBy: {
     id: string;
     name: string;

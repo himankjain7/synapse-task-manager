@@ -43,28 +43,7 @@ export function useCreateProject() {
           variables.workspaceId
         ),
       });
-    },
-  });
-}
-
-export function useUpdateProject() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({
-      workspaceId,
-      id,
-      input,
-    }: {
-      workspaceId: string;
-      id: string;
-      input: UpdateProjectInput;
-    }) => projectApi.update(workspaceId, id, input),
-
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: QueryKeys.projects.all,
-      });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }
@@ -85,6 +64,7 @@ export function useDeleteProject() {
       queryClient.invalidateQueries({
         queryKey: QueryKeys.projects.all,
       });
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
     },
   });
 }

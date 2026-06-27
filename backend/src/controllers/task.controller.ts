@@ -1,40 +1,18 @@
 import { Request, Response } from 'express';
 import { TaskService } from '../services/task.service';
 import { ProjectService } from '../services/project.service';
+import { ActivityService } from '../services/activity.service';
 import { asyncHandler } from '../middleware/error.middleware';
 import { APIError, ForbiddenError, NotFoundError } from '../middleware/error.middleware';
-import { CreateTaskRequest, UpdateTaskRequest, TaskStatus, TaskPriority, TaskFilterParams } from '../models';
+import { AuthzService } from '../services/authz.service';
+import { CreateTaskRequest, UpdateTaskRequest, TaskStatus, TaskPriority, TaskFilterParams, BulkUpdateTaskRequest } from '../models';
+import prisma from '../config/db';
+import { getIo } from '../socket';
+import { NotificationService } from '../services/notification.service';
+import { sendSuccess } from '../utils/response';
+import { safeSideEffect } from '../utils/safeSideEffect';
 
-/**
- * Task Controller
- *
- * Handles HTTP requests for task operations:
- * - Create/read/update/delete tasks
- * - Assign/unassign tasks
- * - Update task status and priority
- * - Reorder tasks (drag-and-drop)
- * - Bulk update tasks
- *
- * All operations require workspace membership.
- */
 export class TaskController {
-  /**
-   * POST /projects/:projectId/tasks
-   * Create a new task
-   *
-   * Request body:
-   * {
-   *   title: string (required, 1-200 chars),
-   *   description?: string,
-   *   priority?: 'low' | 'medium' | 'high' | 'urgent',
-   *   assignedTo?: string (user ID),
-   *   dueDate?: Date,
-   *   estimatedHours?: number
-   * }
-   *
-   * Response: 201 Created
-   * Task object with assignee details
-   */
   static createTask = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { projectId } = req.params;
@@ -43,7 +21,6 @@ export class TaskController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    // Verify project access
     const canAccess = await ProjectService.canAccessProject(projectId, userId);
     if (!canAccess) {
       throw new ForbiddenError('You do not have access to this project');
@@ -52,21 +29,32 @@ export class TaskController {
     const data: CreateTaskRequest = req.body;
     const task = await TaskService.createTask(projectId, userId, data);
 
-    res.status(201).json({
-      success: true,
-      data: task,
-      message: 'Task created',
-      timestamp: new Date(),
-    });
+    if (task) {
+      const project = await prisma.project.findUnique({ where: { id: projectId }, select: { workspaceId: true } });
+      const wsId = project?.workspaceId;
+
+      if (data.assignedTo) {
+        await NotificationService.notify({
+          recipientId: data.assignedTo,
+          actorId: userId,
+          type: 'task_assigned',
+          title: 'Task Assigned',
+          message: `assigned task "${task.title}" to you`,
+          taskId: task.id,
+          projectId,
+          workspaceId: wsId,
+        });
+      }
+
+      await safeSideEffect(async () => {
+        const io = getIo();
+        io.to(`project:${projectId}`).emit('task:created', { task });
+      }, 'socket:task:created');
+    }
+
+    sendSuccess(res, task, 201);
   });
 
-  /**
-   * GET /projects/:projectId/tasks/:id
-   * Get task details
-   *
-   * Response: 200 OK
-   * Task object with assignee and project information
-   */
   static getTask = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -80,28 +68,12 @@ export class TaskController {
       throw new NotFoundError('Task', id);
     }
 
-    res.status(200).json({
-      success: true,
-      data: task,
-      timestamp: new Date(),
-    });
+    await AuthzService.requireProjectAccess(task.projectId, userId);
+
+    sendSuccess(res, task);
   });
 
-  /**
-   * GET /projects/:projectId/tasks
-   * List tasks in project with filtering
-   *
-   * Query params:
-   * - status?: 'todo' | 'in_progress' | 'done'
-   * - priority?: 'low' | 'medium' | 'high' | 'urgent'
-   * - assignedTo?: user ID
-   * - page: number (default 1)
-   * - limit: number (default 20)
-   *
-   * Response: 200 OK
-   * Paginated list of tasks
-   */
-   static listTasks = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  static listTasks = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const userId = req.auth?.userId;
   const { projectId } = req.params;
 
@@ -123,29 +95,9 @@ export class TaskController {
     filters
   );
 
-  res.status(200).json({
-    success: true,
-    data: result,
-    timestamp: new Date(),
-  });
+  sendSuccess(res, result);
 });
 
-  /**
-   * PATCH /projects/:projectId/tasks/:id
-   * Update task details
-   *
-   * Request body:
-   * {
-   *   title?: string,
-   *   description?: string,
-   *   priority?: string,
-   *   dueDate?: Date,
-   *   estimatedHours?: number
-   * }
-   *
-   * Response: 200 OK
-   * Updated task object
-   */
   static updateTask = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -155,28 +107,128 @@ export class TaskController {
     }
 
     const data: UpdateTaskRequest = req.body;
+    const oldTask = await TaskService.getTaskById(id);
     const task = await TaskService.updateTask(id, userId, data);
 
-    res.status(200).json({
-      success: true,
-      data: task,
-      message: 'Task updated',
-      timestamp: new Date(),
-    });
+    if (task) {
+      const wsId = oldTask?.project?.workspaceId;
+
+      const newAssigneeId = task.assignedTo;
+      const oldAssigneeId = oldTask?.assignedTo;
+      const assigneeChanged = newAssigneeId !== oldAssigneeId && (data.assignedTo !== undefined || data.assigneeId !== undefined);
+
+      let notified = false;
+
+      if (data.status && oldTask && oldTask.status !== data.status) {
+        notified = true;
+        const targets = new Set<string>();
+        if (task.assignedTo) targets.add(task.assignedTo);
+        if (task.assignedTo !== userId) targets.add(userId);
+        for (const t of targets) {
+          await NotificationService.notify({
+            recipientId: t, actorId: userId,
+            type: 'status_changed', title: 'Status Changed',
+            message: `moved "${task.title}" from ${oldTask!.status.replace(/_/g, ' ')} to ${data.status!.replace(/_/g, ' ')}`,
+            taskId: task.id, projectId: task.projectId, workspaceId: wsId,
+          });
+        }
+      }
+
+      if (data.priority && oldTask && oldTask.priority !== data.priority) {
+        notified = true;
+        const targets = new Set<string>();
+        if (task.assignedTo) targets.add(task.assignedTo);
+        if (task.assignedTo !== userId) targets.add(userId);
+        for (const t of targets) {
+          await NotificationService.notify({
+            recipientId: t, actorId: userId,
+            type: 'priority_changed', title: 'Priority Changed',
+            message: `changed priority of "${task.title}" to ${data.priority}`,
+            taskId: task.id, projectId: task.projectId, workspaceId: wsId,
+          });
+        }
+      }
+
+      if (data.dueDate !== undefined && oldTask && oldTask.dueDate !== data.dueDate) {
+        const newDateStr = data.dueDate ? new Date(data.dueDate).toISOString().split('T')[0] : null;
+        const oldDateStr = oldTask.dueDate ? new Date(oldTask.dueDate).toISOString().split('T')[0] : null;
+        if (newDateStr !== oldDateStr) {
+          notified = true;
+          const targets = new Set<string>();
+          if (task.assignedTo) targets.add(task.assignedTo);
+          if (task.assignedTo !== userId) targets.add(userId);
+          for (const t of targets) {
+            await NotificationService.notify({
+              recipientId: t, actorId: userId,
+              type: 'due_date_changed', title: 'Due Date Changed',
+              message: `changed due date of "${task.title}"`,
+              taskId: task.id, projectId: task.projectId, workspaceId: wsId,
+            });
+          }
+        }
+      }
+
+      if (assigneeChanged) {
+        notified = true;
+        if (oldAssigneeId) {
+          await NotificationService.notify({
+            recipientId: oldAssigneeId, actorId: userId,
+            type: 'task_unassigned', title: 'Task Unassigned',
+            message: `unassigned you from "${task.title}"`,
+            taskId: task.id, projectId: task.projectId, workspaceId: wsId,
+          });
+        }
+        if (newAssigneeId) {
+          await NotificationService.notify({
+            recipientId: newAssigneeId, actorId: userId,
+            type: 'task_assigned', title: 'Task Assigned',
+            message: `assigned "${task.title}" to you`,
+            taskId: task.id, projectId: task.projectId, workspaceId: wsId,
+          });
+        }
+      }
+
+      if (data.title && oldTask && data.title !== oldTask.title) {
+        notified = true;
+        const targets = new Set<string>();
+        if (task.assignedTo) targets.add(task.assignedTo);
+        if (task.assignedTo !== userId) targets.add(userId);
+        for (const t of targets) {
+          await NotificationService.notify({
+            recipientId: t, actorId: userId,
+            type: 'title_changed', title: 'Title Changed',
+            message: `renamed "${oldTask.title}" to "${data.title}"`,
+            taskId: task.id, projectId: task.projectId, workspaceId: wsId,
+          });
+        }
+      }
+
+      if (!notified && !assigneeChanged) {
+        const targets = new Set<string>();
+        if (task.assignedTo) targets.add(task.assignedTo);
+        if (task.assignedTo !== userId) targets.add(userId);
+        for (const t of targets) {
+          await NotificationService.notify({
+            recipientId: t, actorId: userId,
+            type: 'task_updated', title: 'Task Updated',
+            message: `updated "${task.title}"`,
+            taskId: task.id, projectId: task.projectId, workspaceId: wsId,
+          });
+        }
+      }
+
+      await safeSideEffect(async () => {
+        const io = getIo();
+        io.to(`project:${task.projectId}`).emit('task:updated', { task });
+        if (assigneeChanged) {
+          io.to(`project:${task.projectId}`).emit('task:assigned', { taskId: task.id, assigneeId: newAssigneeId });
+        }
+      }, 'socket:task:updated');
+    }
+
+    sendSuccess(res, task);
   });
 
-  /**
-   * PATCH /projects/:projectId/tasks/:id/status
-   * Update task status quickly
-   *
-   * Request body:
-   * {
-   *   status: 'todo' | 'in_progress' | 'done'
-   * }
-   *
-   * Response: 200 OK
-   * Updated task object
-   */
   static updateTaskStatus = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -186,28 +238,31 @@ export class TaskController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    const task = await TaskService.updateTaskStatus(id, status);
+    const task = await TaskService.updateTaskStatus(id, userId, status);
 
-    res.status(200).json({
-      success: true,
-      data: task,
-      message: 'Task status updated',
-      timestamp: new Date(),
-    });
+    if (task) {
+      const project = await prisma.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
+      const wsId = project?.workspaceId;
+      const targets = new Set<string>();
+      if (task.assignedTo) targets.add(task.assignedTo);
+      if (task.assignedTo !== userId) targets.add(userId);
+      for (const t of targets) {
+        await NotificationService.notify({
+          recipientId: t, actorId: userId,
+          type: 'status_changed', title: 'Status Changed',
+          message: `moved "${task.title}" to ${status.replace(/_/g, ' ')}`,
+          taskId: task.id, projectId: task.projectId, workspaceId: wsId,
+        });
+      }
+      await safeSideEffect(async () => {
+        const io = getIo();
+        io.to(`project:${task.projectId}`).emit('task:updated', { task });
+      }, 'socket:task:updated');
+    }
+
+    sendSuccess(res, task);
   });
 
-  /**
-   * PATCH /projects/:projectId/tasks/:id/assign
-   * Assign or unassign task
-   *
-   * Request body:
-   * {
-   *   assignedTo: string | null (user ID or null to unassign)
-   * }
-   *
-   * Response: 200 OK
-   * Updated task object
-   */
   static assignTask = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -217,22 +272,26 @@ export class TaskController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    const task = await TaskService.assignTask(id, assignedTo || null);
+    const task = await TaskService.assignTask(id, userId, assignedTo || null);
 
-    res.status(200).json({
-      success: true,
-      data: task,
-      message: 'Task assignment updated',
-      timestamp: new Date(),
-    });
+    if (task && assignedTo) {
+      const project = await prisma.project.findUnique({ where: { id: task.projectId }, select: { workspaceId: true } });
+      const wsId = project?.workspaceId;
+      await NotificationService.notify({
+        recipientId: assignedTo, actorId: userId,
+        type: 'task_assigned', title: 'Task Assigned',
+        message: `assigned task "${task.title}" to you`,
+        taskId: task.id, projectId: task.projectId, workspaceId: wsId,
+      });
+      await safeSideEffect(async () => {
+        const io = getIo();
+        io.to(`project:${task.projectId}`).emit('task:assigned', { taskId: task.id, assigneeId: assignedTo });
+      }, 'socket:task:assigned');
+    }
+
+    sendSuccess(res, task);
   });
 
-  /**
-   * DELETE /projects/:projectId/tasks/:id
-   * Delete task
-   *
-   * Response: 204 No Content
-   */
   static deleteTask = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -241,23 +300,32 @@ export class TaskController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
+    const taskInfo = await prisma.task.findUnique({
+      where: { id },
+      select: { title: true, projectId: true, assignedTo: true, project: { select: { workspaceId: true } } },
+    });
+
     await TaskService.deleteTask(id, userId);
+
+    if (taskInfo) {
+      const wsId = taskInfo.project?.workspaceId;
+      if (taskInfo.assignedTo) {
+        await NotificationService.notify({
+          recipientId: taskInfo.assignedTo, actorId: userId,
+          type: 'task_deleted', title: 'Task Deleted',
+          message: `deleted "${taskInfo.title}"`,
+          taskId: id, projectId: taskInfo.projectId, workspaceId: wsId,
+        });
+      }
+      await safeSideEffect(async () => {
+        const io = getIo();
+        io.to(`project:${taskInfo.projectId}`).emit('task:deleted', { taskId: id });
+      }, 'socket:task:deleted');
+    }
 
     res.status(204).send();
   });
 
-  /**
-   * PATCH /projects/:projectId/tasks/:id/reorder
-   * Reorder task (drag-and-drop)
-   *
-   * Request body:
-   * {
-   *   newPosition: number
-   * }
-   *
-   * Response: 200 OK
-   * Updated task object
-   */
   static reorderTask = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     const { id } = req.params;
@@ -267,62 +335,55 @@ export class TaskController {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    const task = await TaskService.reorderTask(id, newPosition);
+    const task = await TaskService.reorderTask(id, userId, newPosition);
 
-    res.status(200).json({
-      success: true,
-      data: task,
-      message: 'Task reordered',
-      timestamp: new Date(),
-    });
+    sendSuccess(res, task);
   });
 
-  /**
-   * POST /projects/:projectId/tasks/bulk-update
-   * Update multiple tasks at once
-   *
-   * Request body:
-   * {
-   *   updates: Array<{
-   *     id: string,
-   *     status?: string,
-   *     priority?: string,
-   *     assignedTo?: string
-   *   }>
-   * }
-   *
-   * Response: 200 OK
-   * Array of updated tasks
-   */
   static bulkUpdateTasks = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
     if (!userId) {
       throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
-    const { updates } = req.body;
-    const tasks = await TaskService.bulkUpdateTasks(updates);
+    const data: BulkUpdateTaskRequest = {
+      taskIds: req.body.taskIds,
+      status: req.body.status as TaskStatus | undefined,
+      priority: req.body.priority as TaskPriority | undefined,
+      assignedTo: req.body.assignedTo,
+    };
+    const tasks = await TaskService.bulkUpdateTasks(data, userId);
 
-    res.status(200).json({
-      success: true,
-      data: tasks,
-      message: 'Tasks updated',
-      timestamp: new Date(),
-    });
+    if (tasks.length > 0) {
+      const projectId = req.params.projectId;
+      await safeSideEffect(async () => {
+        const actor = await NotificationService.getUserInfo(userId);
+        const io = getIo();
+        io.to(`project:${projectId}`).emit('task:bulk-updated', { taskIds: data.taskIds, updates: data, actor: { id: actor.id, name: actor.name } });
+      }, 'socket:task:bulk-updated');
+    }
+
+    sendSuccess(res, tasks);
   });
 
-  /**
-   * GET /tasks/assigned
-   * Get tasks assigned to current user
-   *
-   * Query params:
-   * - status?: task status filter
-   * - page: number (default 1)
-   * - limit: number (default 20)
-   *
-   * Response: 200 OK
-   * Paginated list of assigned tasks
-   */
+  static bulkDeleteTasks = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
+    }
+
+    const { taskIds }: { taskIds: string[] } = req.body;
+    const count = await TaskService.bulkDeleteTasks(taskIds, userId);
+
+    const projectId = req.params.projectId;
+    await safeSideEffect(async () => {
+      const io = getIo();
+      io.to(`project:${projectId}`).emit('task:bulk-deleted', { taskIds, count });
+    }, 'socket:task:bulk-deleted');
+
+    sendSuccess(res, { deletedCount: count });
+  });
+
   static getAssignedTasks = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
 
@@ -333,26 +394,13 @@ export class TaskController {
     const status = req.query.status as TaskStatus | undefined;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
+    const workspaceId = req.query.workspaceId as string | undefined;
 
-    const result = await TaskService.getUserTasks(userId, status, page, limit);
+    const result = await TaskService.getUserTasks(userId, status, page, limit, workspaceId);
 
-    res.status(200).json({
-      success: true,
-      data: result,
-      timestamp: new Date(),
-    });
+    sendSuccess(res, result);
   });
 
-  /**
-   * GET /tasks/overdue
-   * Get overdue tasks for current user
-   *
-   * Query params:
-   * - limit: number (default 10, max 50)
-   *
-   * Response: 200 OK
-   * List of overdue tasks
-   */
   static getOverdueTasks = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const userId = req.auth?.userId;
 
@@ -361,13 +409,23 @@ export class TaskController {
     }
 
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
-    const tasks = await TaskService.getOverdueTasks(limit);
+    const workspaceId = req.query.workspaceId as string | undefined;
+    const tasks = await TaskService.getOverdueTasks(userId, limit, workspaceId);
 
-    res.status(200).json({
-      success: true,
-      data: tasks,
-      timestamp: new Date(),
-    });
+    sendSuccess(res, tasks);
+  });
+
+  static getTaskActivity = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const userId = req.auth?.userId;
+    const { taskId } = req.params;
+
+    if (!userId) {
+      throw new APIError(401, 'UNAUTHORIZED', 'Authentication required');
+    }
+
+    await AuthzService.requireTaskAccess(taskId, userId);
+    const activity = await ActivityService.getTaskActivity(taskId);
+
+    sendSuccess(res, activity);
   });
 }
-

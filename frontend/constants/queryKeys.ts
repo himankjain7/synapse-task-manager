@@ -25,8 +25,31 @@ export const QueryKeys = {
   },
 
   notifications: {
-    unread: ['notifications', 'unread'] as const,
-    list: ['notifications', 'list'] as const,
+    all: ['notifications'] as const,
+    unread: (workspaceId: string) => ['notifications', 'workspace', workspaceId, 'unread'] as const,
+    list: (workspaceId: string) => ['notifications', 'workspace', workspaceId, 'list'] as const,
+  },
+
+  analytics: {
+    all: ['analytics'] as const,
+    workspace: (id: string) => ['analytics', 'workspace', id] as const,
+    project: (id: string) => ['analytics', 'project', id] as const,
+    user: (workspaceId?: string) => workspaceId ? ['analytics', 'user', workspaceId] as const : ['analytics', 'user'] as const,
+  },
+
+  activity: {
+    all: ['activity'] as const,
+    task: (taskId: string) => ['activity', 'task', taskId] as const,
+  },
+
+  labels: {
+    all: ['labels'] as const,
+    project: (projectId: string) => ['labels', 'project', projectId] as const,
+  },
+
+  search: {
+    all: ['search'] as const,
+    global: (workspaceId: string, query: string) => ['search', 'workspace', workspaceId, 'query', query] as const,
   },
 } as const;
 

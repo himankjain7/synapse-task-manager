@@ -2,13 +2,21 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore, AppNotification } from '../store/notificationStore';
+import { usePresenceStore } from '../store/presenceStore';
 import { connectSocket, disconnectSocket, getSocket } from '../services/socket';
 import { QueryKeys } from '../constants/queryKeys';
+
+interface SubtaskSocketEvent {
+  taskId: string;
+  subtask?: { id: string; [key: string]: unknown };
+  subtaskId?: string;
+}
 
 export function useSocketEvents() {
   const queryClient = useQueryClient();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const addNotification = useNotificationStore((s) => s.addNotification);
+  const { setOnlineUsers, addOnlineUser, removeOnlineUser, addViewer, removeViewer } = usePresenceStore();
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -29,61 +37,176 @@ export function useSocketEvents() {
       addNotification(notification);
     };
 
-    const handleProjectCreated = () => {
+    const invalidateAnalytics = () => {
+      queryClient.invalidateQueries({ queryKey: QueryKeys.analytics.all });
+    };
+
+    const invalidateTasks = () => {
+      queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
+    };
+
+    const invalidateProjects = () => {
       queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+    };
+
+    const handleProjectCreated = () => {
+      invalidateProjects();
+      invalidateAnalytics();
     };
 
     const handleProjectUpdated = () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+      invalidateProjects();
+      invalidateAnalytics();
     };
 
     const handleProjectDeleted = () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+      invalidateProjects();
+      invalidateAnalytics();
+    };
+
+    const handleProjectArchived = () => {
+      invalidateProjects();
+      invalidateAnalytics();
+    };
+
+    const handleProjectUnarchived = () => {
+      invalidateProjects();
+      invalidateAnalytics();
     };
 
     const handleTaskCreated = () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+      invalidateTasks();
+      invalidateProjects();
+      invalidateAnalytics();
     };
 
     const handleTaskUpdated = () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+      invalidateTasks();
+      invalidateProjects();
+      invalidateAnalytics();
     };
 
     const handleTaskDeleted = () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.projects.all });
+      invalidateTasks();
+      invalidateProjects();
+      invalidateAnalytics();
+    };
+
+    const handleTaskAssigned = () => {
+      invalidateTasks();
+      invalidateProjects();
+      invalidateAnalytics();
     };
 
     const handleCommentAdded = () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
+      invalidateTasks();
+      invalidateAnalytics();
     };
 
     const handleCommentDeleted = () => {
-      queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.all });
+      invalidateTasks();
+      invalidateAnalytics();
+    };
+
+    const handleAttachmentUploaded = () => {
+      invalidateTasks();
+      invalidateAnalytics();
+    };
+
+    const handleAttachmentDeleted = () => {
+      invalidateTasks();
+      invalidateAnalytics();
+    };
+
+    const handleMemberAdded = () => {
+      invalidateAnalytics();
+    };
+
+    const handleMemberRemoved = () => {
+      invalidateAnalytics();
+    };
+
+    const handleSubtaskEvent = (payload: SubtaskSocketEvent) => {
+      if (payload.taskId) {
+        queryClient.invalidateQueries({ queryKey: ['subtasks', payload.taskId] });
+        queryClient.invalidateQueries({ queryKey: ['task-activity', payload.taskId] });
+        queryClient.invalidateQueries({ queryKey: QueryKeys.tasks.detail(payload.taskId) });
+      }
+      invalidateAnalytics();
+    };
+
+    const handlePresenceList = (payload: { projectId: string; onlineUserIds: string[] }) => {
+      setOnlineUsers(payload.projectId, payload.onlineUserIds);
+    };
+
+    const handlePresenceOnline = (payload: { userId: string; projectId?: string }) => {
+      if (payload.projectId) {
+        addOnlineUser(payload.projectId, payload.userId);
+      }
+    };
+
+    const handlePresenceOffline = (payload: { userId: string; projectId?: string }) => {
+      if (payload.projectId) {
+        removeOnlineUser(payload.projectId, payload.userId);
+      }
+    };
+
+    const handleViewingTask = (payload: { taskId: string; userId: string; userName?: string; isViewing: boolean }) => {
+      if (payload.isViewing && payload.userName) {
+        addViewer(payload.taskId, payload.userId, payload.userName);
+      } else {
+        removeViewer(payload.taskId, payload.userId);
+      }
     };
 
     socket.on('notification', handleNotification);
     socket.on('project:created', handleProjectCreated);
     socket.on('project:updated', handleProjectUpdated);
     socket.on('project:deleted', handleProjectDeleted);
+    socket.on('project:archived', handleProjectArchived);
+    socket.on('project:unarchived', handleProjectUnarchived);
     socket.on('task:created', handleTaskCreated);
     socket.on('task:updated', handleTaskUpdated);
     socket.on('task:deleted', handleTaskDeleted);
+    socket.on('task:assigned', handleTaskAssigned);
     socket.on('comment:added', handleCommentAdded);
     socket.on('comment:deleted', handleCommentDeleted);
+    socket.on('attachment:uploaded', handleAttachmentUploaded);
+    socket.on('attachment:deleted', handleAttachmentDeleted);
+    socket.on('member:added', handleMemberAdded);
+    socket.on('member:removed', handleMemberRemoved);
+    socket.on('subtask:created', handleSubtaskEvent);
+    socket.on('subtask:updated', handleSubtaskEvent);
+    socket.on('subtask:deleted', handleSubtaskEvent);
+    socket.on('presence:list', handlePresenceList);
+    socket.on('presence:online', handlePresenceOnline);
+    socket.on('presence:offline', handlePresenceOffline);
+    socket.on('viewing:task', handleViewingTask);
 
     return () => {
       socket.off('notification', handleNotification);
       socket.off('project:created', handleProjectCreated);
       socket.off('project:updated', handleProjectUpdated);
       socket.off('project:deleted', handleProjectDeleted);
+      socket.off('project:archived', handleProjectArchived);
+      socket.off('project:unarchived', handleProjectUnarchived);
       socket.off('task:created', handleTaskCreated);
       socket.off('task:updated', handleTaskUpdated);
       socket.off('task:deleted', handleTaskDeleted);
+      socket.off('task:assigned', handleTaskAssigned);
       socket.off('comment:added', handleCommentAdded);
       socket.off('comment:deleted', handleCommentDeleted);
+      socket.off('attachment:uploaded', handleAttachmentUploaded);
+      socket.off('attachment:deleted', handleAttachmentDeleted);
+      socket.off('member:added', handleMemberAdded);
+      socket.off('member:removed', handleMemberRemoved);
+      socket.off('subtask:created', handleSubtaskEvent);
+      socket.off('subtask:updated', handleSubtaskEvent);
+      socket.off('subtask:deleted', handleSubtaskEvent);
+      socket.off('presence:list', handlePresenceList);
+      socket.off('presence:online', handlePresenceOnline);
+      socket.off('presence:offline', handlePresenceOffline);
+      socket.off('viewing:task', handleViewingTask);
     };
-  }, [isAuthenticated, queryClient, addNotification]);
+  }, [isAuthenticated, queryClient, addNotification, setOnlineUsers, addOnlineUser, removeOnlineUser, addViewer, removeViewer]);
 }

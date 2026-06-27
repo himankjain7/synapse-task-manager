@@ -1,26 +1,23 @@
 import axios from 'axios';
 import { Config } from '../constants/config';
-import { useAuthStore } from '../store/authStore';
 import { transformError } from '../utils/error';
 
 export const api = axios.create({
   baseURL: Config.API_URL,
   timeout: Config.API_TIMEOUT,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
-
-let isLoggingOut = false;
 
 // Request Interceptor: Attach JWT Access Token
 api.interceptors.request.use(
   (config) => {
+    const { useAuthStore } = require('../store/authStore');
     const accessToken = useAuthStore.getState().accessToken;
 
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
+
+    console.log("[DEBUG api.ts REQUEST]", { method: config.method, url: config.url, baseURL: config.baseURL, fullURL: config.baseURL + config.url, authHeader: config.headers.Authorization ? 'Bearer ...' : 'MISSING' });
 
     return config;
   },
@@ -28,16 +25,29 @@ api.interceptors.request.use(
 );
 
 // Response Interceptor: Transform errors & handle 401
+// Standard envelope: { success, data, error, timestamp }
 api.interceptors.response.use(
   (response) => {
-    console.log('API SUCCESS:', response.config.url, response.data);
+    const body = response.data;
+    console.log("[DEBUG api.ts RESPONSE]", { status: response.status, url: response.config?.url, data: body });
+  
+    if (body && body.success === false) {
+      return Promise.reject(transformError({
+        response: {
+          status: response.status,
+          data: body,
+        },
+      }));
+    }
     return response;
   },
   (error) => {
-    console.log('API ERROR URL:', error.config?.url);
-    console.log('API ERROR STATUS:', error.response?.status);
-    console.log('API ERROR DATA:', error.response?.data);
-
+    console.log("[DEBUG api.ts ERROR]", {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+      url: error.config?.url,
+    });
     return Promise.reject(transformError(error));
   }
 );

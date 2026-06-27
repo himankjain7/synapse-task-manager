@@ -1,4 +1,5 @@
 import prisma from '../config/db';
+import { ActivityService } from './activity.service';
 import {
   Workspace,
   WorkspaceWithOwner,
@@ -72,6 +73,14 @@ export class WorkspaceService {
       },
     });
 
+    await ActivityService.log({
+      workspaceId: workspace.id,
+      taskId: null,
+      userId,
+      action: 'workspace_created',
+      details: { name: workspace.name },
+    });
+
     return {
       ...workspace,
       owner: {
@@ -79,6 +88,8 @@ export class WorkspaceService {
         email: user.email,
         name: user.name,
         avatarUrl: user.avatarUrl,
+        provider: user.provider ?? 'email',
+        emailVerified: user.emailVerified ?? false,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
@@ -115,6 +126,8 @@ export class WorkspaceService {
         email: owner.email,
         name: owner.name,
         avatarUrl: owner.avatarUrl,
+        provider: owner.provider ?? 'email',
+        emailVerified: owner.emailVerified ?? false,
         createdAt: owner.createdAt,
         updatedAt: owner.updatedAt,
       },
@@ -173,6 +186,8 @@ export class WorkspaceService {
             email: owner.email,
             name: owner.name,
             avatarUrl: owner.avatarUrl,
+            provider: owner.provider ?? 'email',
+            emailVerified: owner.emailVerified ?? false,
             createdAt: owner.createdAt,
             updatedAt: owner.updatedAt,
           },
@@ -284,9 +299,9 @@ export class WorkspaceService {
       throw new Error('Permission denied: only owner or admin can add members');
     }
 
-    // Verify target user exists
+    // Verify target user exists by email
     const targetUser = await prisma.user.findUnique({
-      where: { id: data.userId },
+      where: { email: data.email },
     });
 
     if (!targetUser) {
@@ -298,7 +313,7 @@ export class WorkspaceService {
       where: {
         workspaceId_userId: {
           workspaceId,
-          userId: data.userId,
+          userId: targetUser.id,
         },
       },
     });
@@ -311,10 +326,18 @@ export class WorkspaceService {
     const member = await prisma.workspaceMember.create({
       data: {
         workspaceId,
-        userId: data.userId,
+        userId: targetUser.id,
         role: data.role,
         joinedAt: new Date(),
       },
+    });
+
+    await ActivityService.log({
+      workspaceId,
+      taskId: null,
+      userId,
+      action: 'member_added',
+      details: { targetUserId: targetUser.id },
     });
 
     return {
@@ -324,6 +347,8 @@ export class WorkspaceService {
         email: targetUser.email,
         name: targetUser.name,
         avatarUrl: targetUser.avatarUrl,
+        provider: targetUser.provider ?? 'email',
+        emailVerified: targetUser.emailVerified ?? false,
         createdAt: targetUser.createdAt,
         updatedAt: targetUser.updatedAt,
       },
@@ -381,6 +406,8 @@ export class WorkspaceService {
             email: user.email,
             name: user.name,
             avatarUrl: user.avatarUrl,
+            provider: user.provider ?? 'email',
+            emailVerified: user.emailVerified ?? false,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
           },
@@ -495,6 +522,14 @@ export class WorkspaceService {
     if (member.role === WorkspaceMemberRole.OWNER) {
       throw new Error('Cannot remove workspace owner. Delete workspace instead.');
     }
+
+    await ActivityService.log({
+      workspaceId,
+      taskId: null,
+      userId,
+      action: 'member_removed',
+      details: { targetUserId: memberId },
+    });
 
     // Remove member
     await prisma.workspaceMember.delete({

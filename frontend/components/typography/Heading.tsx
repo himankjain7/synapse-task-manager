@@ -42,7 +42,7 @@ export function Heading({
     {
       color: resolveColor(),
       textAlign: align,
-      fontWeight: theme.typography.weights[weight] as any,
+      fontWeight: theme.typography.weights[weight],
     },
     // Heading sizing based on level tokens
     level === 'display' && {
