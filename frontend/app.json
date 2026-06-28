@@ -25,6 +25,12 @@
       "expo-router",
       "expo-splash-screen",
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7290997d-b534-4e1a-9a5d-a88b423053a1"
+      }
+    }
   }
 }
