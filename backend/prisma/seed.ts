@@ -63,6 +63,21 @@ async function main() {
   const passwordHash = await bcrypt.hash('password123', 10);
   const NOW = new Date();
 
+  // Clean existing data in reverse dependency order for idempotency
+  await prisma.activityLog.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.commentReaction.deleteMany();
+  await prisma.comment.deleteMany();
+  await prisma.attachment.deleteMany();
+  await prisma.taskLabelAssignment.deleteMany();
+  await prisma.subtask.deleteMany();
+  await prisma.taskLabel.deleteMany();
+  await prisma.task.deleteMany();
+  await prisma.project.deleteMany();
+  await prisma.workspaceMember.deleteMany();
+  await prisma.workspace.deleteMany();
+  await prisma.user.deleteMany();
+
   // ============================================================
   // 1. USERS (6)
   // ============================================================
@@ -686,7 +701,7 @@ async function main() {
     (u: string) => ({ title: 'Due Date Approaching', content: `"${u}" is due tomorrow` }),
   ];
 
-  const notifications: { userId: string; type: string; title: string; content: string; read: boolean; createdAt: Date }[] = [];
+  const notifications: { id: string; recipientId: string; actorId: string | null; taskId: string; projectId: string | null; type: string; title: string; message: string; isRead: boolean; createdAt: Date }[] = [];
   const notifTasks = pickN(tasks, 40);
 
   for (let i = 0; i < notifTasks.length; i++) {
@@ -696,11 +711,15 @@ async function main() {
     const recipient = task.assignedTo ? users.find((u) => u.id === task.assignedTo)! : pick(users);
     const notif = template(task.title);
     notifications.push({
-      userId: recipient.id,
+      id: uuid(),
+      recipientId: recipient.id,
+      actorId: pick(users.filter((u) => u.id !== recipient.id)).id,
+      taskId: task.id,
+      projectId: task.projectId,
       type: notifTypes[typeIdx],
       title: notif.title,
-      content: notif.content,
-      read: Math.random() > 0.6,
+      message: notif.content,
+      isRead: Math.random() > 0.6,
       createdAt: randomBetween(task.createdAt, new Date()),
     });
   }

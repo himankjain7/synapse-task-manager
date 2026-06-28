@@ -8,7 +8,7 @@ datasource db {
 }
 
 model User {
-  id               String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id               String            @id @default(uuid()) @db.Uuid
   email            String            @unique
   passwordHash     String            @map("password_hash")
   name             String
@@ -34,7 +34,7 @@ model User {
 }
 
 model Workspace {
-  id           String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id           String            @id @default(uuid()) @db.Uuid
   name         String
   ownerId      String            @map("owner_id") @db.Uuid
   description  String?
@@ -51,7 +51,7 @@ model Workspace {
 }
 
 model WorkspaceMember {
-  id          String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String              @id @default(uuid()) @db.Uuid
   workspaceId String              @map("workspace_id") @db.Uuid
   userId      String              @map("user_id") @db.Uuid
   role        WorkspaceMemberRole @default(member)
@@ -66,7 +66,7 @@ model WorkspaceMember {
 }
 
 model Project {
-  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String      @id @default(uuid()) @db.Uuid
   workspaceId String      @map("workspace_id") @db.Uuid
   name        String
   description String?
@@ -87,7 +87,7 @@ model Project {
 }
 
 model Task {
-  id           String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id           String                @id @default(uuid()) @db.Uuid
   projectId    String                @map("project_id") @db.Uuid
   title        String
   description  String?
@@ -122,7 +122,7 @@ model Task {
 }
 
 model Subtask {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String   @id @default(uuid()) @db.Uuid
   taskId    String   @map("task_id") @db.Uuid
   title     String
   completed Boolean  @default(false)
@@ -136,7 +136,7 @@ model Subtask {
 }
 
 model Comment {
-  id        String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String            @id @default(uuid()) @db.Uuid
   taskId    String            @map("task_id") @db.Uuid
   userId    String            @map("user_id") @db.Uuid
   content   String
@@ -157,7 +157,7 @@ model Comment {
 }
 
 model CommentReaction {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String   @id @default(uuid()) @db.Uuid
   commentId String   @map("comment_id") @db.Uuid
   userId    String   @map("user_id") @db.Uuid
   emoji     String
@@ -170,7 +170,7 @@ model CommentReaction {
 }
 
 model TaskLabel {
-  id        String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String                @id @default(uuid()) @db.Uuid
   projectId String                @map("project_id") @db.Uuid
   name      String
   color     String                @default("#6366F1")
@@ -183,7 +183,7 @@ model TaskLabel {
 }
 
 model TaskLabelAssignment {
-  id      String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id      String    @id @default(uuid()) @db.Uuid
   taskId  String    @map("task_id") @db.Uuid
   labelId String    @map("label_id") @db.Uuid
   label   TaskLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
@@ -195,7 +195,7 @@ model TaskLabelAssignment {
 }
 
 model Attachment {
-  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id         String   @id @default(uuid()) @db.Uuid
   taskId     String   @map("task_id") @db.Uuid
   uploadedBy String   @map("uploaded_by") @db.Uuid
   fileName   String   @map("file_name")
@@ -211,7 +211,7 @@ model Attachment {
 }
 
 model Notification {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String   @id @default(uuid()) @db.Uuid
   recipientId String   @map("user_id") @db.Uuid
   actorId     String?  @map("actor_id") @db.Uuid
   workspaceId String?  @map("workspace_id") @db.Uuid
@@ -235,7 +235,7 @@ model Notification {
 }
 
 model ActivityLog {
-  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
   workspaceId String    @map("workspace_id") @db.Uuid
   userId      String    @map("user_id") @db.Uuid
   action      String
