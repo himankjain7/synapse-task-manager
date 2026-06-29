@@ -136,7 +136,7 @@ export default function RegisterScreen() {
     setLoading(true);
     triggerHaptic('light');
     try {
-      await register(name.trim(), email.trim(), password);
+      await register(email.trim(), password, name.trim());
       triggerHaptic('success');
       router.replace('/(protected)');
     } catch (err: any) {

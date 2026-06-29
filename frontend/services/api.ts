@@ -42,12 +42,10 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    console.log("[DEBUG api.ts ERROR]", {
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message,
-      url: error.config?.url,
-    });
+    console.log(
+  "FULL SERVER ERROR:\n",
+  JSON.stringify(error.response?.data, null, 2)
+);
     return Promise.reject(transformError(error));
   }
 );
